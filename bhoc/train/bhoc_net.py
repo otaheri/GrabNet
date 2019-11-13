@@ -29,93 +29,78 @@ from torch import nn, optim
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
 
-from supercap.data.dataloader import SuperCapDS
-from supercap.data.prepare_data_I import SC_Synth
-from human_body_prior.tools.model_loader import load_vposer
-from human_body_prior.train.vposer_smpl import VPoser, ContinousRotReprDecoder
+from bhoc.data.dataloader import BHOC_DS
 
-import supercap.data.markers as markersets
 
-class ResBlock(nn.Module):
+class BHOC(nn.Module):
+    def __init__(self, n_neurons, latentD, in_features, out_features):
+        super(BHOC, self).__init__()
 
-    def __init__(self, Fin, Fout, n_neurons=256):
-        super(ResBlock, self).__init__()
-        self.Fin = Fin
-        self.Fout = Fout
+        self.latentD = latentD
 
-        self.fc1 = nn.Linear(Fin, n_neurons)
-        self.bn1 = nn.BatchNorm1d(n_neurons)
+        self.bhoc_enc_bn1 = nn.BatchNorm1d(in_features)
+        self.bhoc_enc_fc1 = nn.Linear(in_features, n_neurons)
+        self.bhoc_enc_bn2 = nn.BatchNorm1d(n_neurons)
+        self.bhoc_enc_fc2 = nn.Linear(n_neurons, n_neurons)
+        self.bhoc_enc_mu = nn.Linear(n_neurons, latentD)
+        self.bhoc_enc_logvar = nn.Linear(n_neurons, latentD)
+        self.dropout = nn.Dropout(p=.1, inplace=False)
 
-        self.fc2 = nn.Linear(n_neurons, Fout)
-        self.bn2 = nn.BatchNorm1d(Fout)
+        self.bhoc_dec_fc1 = nn.Linear(latentD+in_features//2, n_neurons)
+        self.bhoc_dec_fc2 = nn.Linear(n_neurons, n_neurons)
 
-        if Fin != Fout:
-            self.fc3 = nn.Linear(Fin, Fout)
+        self.bhoc_dec_out = nn.Linear(n_neurons, out_features)
 
-        self.ll = nn.LeakyReLU(negative_slope=0.2)
-
-    def forward(self, x, final_nl = True):
-        Xin = x if self.Fin == self.Fout else self.ll(self.fc3(x))
-
-        Xout = self.fc1(x) # n_neurons
-        Xout = self.bn1(Xout)
-        Xout = self.ll(Xout)
-
-        Xout = self.fc2(Xout)
-        Xout = self.bn2(Xout)
-        Xout = Xin + Xout
-
-        if final_nl: return self.ll(Xout)
-        return Xout
-
-class SuperCap(nn.Module):
-    NJoints = 52
-
-    def __init__(self, n_neurons, n_bps, **kwargs):
-        super(SuperCap, self).__init__()
-
-        self.mrk_vids = list(markersets.MPI_Mosh.values())
-
-        self.dropout = nn.Dropout(p=0.0, inplace=False)
-        self.ll = nn.LeakyReLU(negative_slope=0.2)
-        self.sigmoid = nn.Sigmoid()
-
-        self.sc_bn1 = nn.BatchNorm1d(n_bps)
-        self.sc_fcb1 = ResBlock(n_bps, n_neurons)
-        self.sc_fcb2 = ResBlock(n_neurons+n_bps, n_neurons)
-        self.sc_fcb3 = ResBlock((2*n_neurons)+n_bps, n_neurons)
-        self.sc_fc_betas = nn.Linear(n_neurons, n_neurons)
-
-        self.rot_decoder = ContinousRotReprDecoder()
-
-        self.sc_out_pose = nn.Linear(n_neurons, 6*22)
-        self.sc_out_betas = nn.Linear(n_neurons, SC_Synth.BM_NUM_BETAS)
-
-    def forward(self, bps):
+    def encode(self, o_delta, s_delta):
         '''
 
-        :param bps: N x n_bps points
-        :param bps: N x 3 permuted markers
+        :param Pin: Nx(numjoints*3)
+        :param rep_type: 'matrot'/'aa' for matrix rotations or axis-angle
         :return:
         '''
+        o_bps = torch.sqrt(torch.pow(o_delta, 2).sum(2))
+        s_bps = torch.sqrt(torch.pow(s_delta, 2).sum(2))
 
-        Xbps = self.sc_bn1(bps)
-        X1 = self.sc_fcb1(Xbps, True)
-        X2 = self.sc_fcb2(torch.cat([Xbps, X1], dim=1), True)
-        X3 = self.sc_fcb3(torch.cat([Xbps, X1, X2], dim=1), True)
-        X_betas = self.ll(self.sc_fc_betas(X3))
+        in_bps = torch.cat([o_bps, s_bps], dim=1)
 
-        out_betas = self.sc_out_betas(X_betas)
+        Xout = self.bhoc_enc_bn1(in_bps)
 
-        out_pose = self.sc_out_pose(X3)
-        out_pose = self.rot_decoder(out_pose)
-        out_pose = VPoser.matrot2aa(out_pose).view(Xbps.shape[0], -1)
+        Xout = F.leaky_relu(self.bhoc_enc_fc1(Xout), negative_slope=.2)
+        Xout = self.bhoc_enc_bn2(Xout)
+        Xout = self.dropout(Xout)
+        Xout = F.leaky_relu(self.bhoc_enc_fc2(Xout), negative_slope=.2)
+        return torch.distributions.normal.Normal(self.bhoc_enc_mu(Xout), F.softplus(self.bhoc_enc_logvar(Xout)))
 
-        result = {'pose_body': out_pose[:,3:], 'root_orient':out_pose[:,:3], 'betas': out_betas}
-        return result
+    def decode(self, Zin, o_delta):
+        o_bps = torch.sqrt(torch.pow(o_delta, 2).sum(2))
+        z_conditional = torch.cat([Zin, o_bps], dim=1)
+
+        Xout = F.leaky_relu(self.bhoc_dec_fc1(z_conditional), negative_slope=.2)
+        Xout = self.dropout(Xout)
+        Xout = F.leaky_relu(self.bhoc_dec_fc2(Xout), negative_slope=.2)
+        Xout = self.bhoc_dec_out(Xout)
+
+        Xout = Xout.view([Zin.shape[0], -1, 3])
+        return Xout
+
+    def forward(self, o_delta, s_delta, **kwargs):
+        '''
+
+        :param o_delta: bps_delta of object: Nxn_bpsx3
+        :param s_delta: bps_delta of subject, e.g. hand: Nxn_bpsx3
+        :param output_type: bps_delta of something, e.g. hand: Nxn_bpsx3
+        :return:
+        '''
+        q_z = self.encode(o_delta, s_delta)
+        q_z_sample = q_z.rsample()
+        s_delta_rec = self.decode(q_z_sample, o_delta)
+
+        results = {'mean':q_z.mean, 'std':q_z.scale}
+        results['s_delta_rec'] = s_delta_rec
+        return results
 
 
-class SuperCapTrainer:
+class BHOCTrainer:
 
     def __init__(self, work_dir, ps):
 
@@ -132,7 +117,7 @@ class SuperCapTrainer:
 
         summary_logdir = os.path.join(work_dir, 'summaries')
         self.swriter = SummaryWriter(log_dir=summary_logdir)
-        logger('[%s] - Started training supercap experiment code %s' % (expr_code, starttime))
+        logger('[%s] - Started training bhoc experiment code %s' % (expr_code, starttime))
         logger('tensorboard --logdir=%s' % summary_logdir)
         logger('Torch Version: %s\n' % torch.__version__)
 
@@ -151,36 +136,34 @@ class SuperCapTrainer:
 
         kwargs = {'num_workers': ps.n_workers}
         # kwargs = {'num_workers': ps.n_workers, 'pin_memory': True} if use_cuda else {'num_workers': ps.n_workers}
-        ds_train = SuperCapDS(dataset_dir=os.path.join(ps.dataset_dir, 'train'))
+        ds_train = BHOC_DS(dataset_dir=os.path.join(ps.dataset_dir, 'train'))
         self.ds_train = DataLoader(ds_train, batch_size=ps.batch_size, shuffle=True, drop_last=True, **kwargs)
-        ds_val = SuperCapDS(dataset_dir=os.path.join(ps.dataset_dir, 'vald'))
+        ds_val = BHOC_DS(dataset_dir=os.path.join(ps.dataset_dir, 'vald'))
         self.ds_val = DataLoader(ds_val, batch_size=ps.batch_size, shuffle=True, drop_last=True, **kwargs)
-        ds_test = SuperCapDS(dataset_dir=os.path.join(ps.dataset_dir, 'test'))
+        ds_test = BHOC_DS(dataset_dir=os.path.join(ps.dataset_dir, 'test'))
         self.ds_test = DataLoader(ds_test, batch_size=ps.batch_size, shuffle=True, drop_last=False)
 
         logger('Dataset Train, Vald, Test size respectively: %.2f M, %.2f K, %.2f K' %
                (len(self.ds_train.dataset) * 1e-6, len(self.ds_val.dataset) * 1e-3, len(self.ds_test.dataset) * 1e-3))
 
-        with torch.no_grad():
-            self.bm = BodyModel(ps.bm_path, batch_size=1, num_betas=SC_Synth.BM_NUM_BETAS, use_posedirs=False).to(self.comp_device)
-            self.bm_train = BodyModel(ps.bm_path, batch_size=ps.batch_size//gpu_count, num_betas=SC_Synth.BM_NUM_BETAS, use_posedirs=False).to(self.comp_device)
 
-        self.sc_model = SuperCap(n_neurons=ps.n_neurons, n_bps=ps.n_bps).to(self.comp_device)
+        self.bhoc_model = BHOC(n_neurons=ps.n_neurons, latentD=ps.latentD, in_features=ps.in_features, out_features=ps.out_features).to(self.comp_device)
         self.LossL1 = torch.nn.L1Loss(reduction='mean')
         self.LossL2 = torch.nn.MSELoss(reduction='mean')
         if ps.use_multigpu:
-            self.sc_model = nn.DataParallel(self.sc_model)
+            self.bhoc_model = nn.DataParallel(self.bhoc_model)
             self.bm_train = nn.DataParallel(self.bm_train)
 
             logger("Training on Multiple GPU's")
 
-        varlist = [var[1] for var in self.sc_model.named_parameters()]
+        varlist = [var[1] for var in self.bhoc_model.named_parameters()]
 
         params_count = sum(p.numel() for p in varlist if p.requires_grad)
         logger('Total Trainable Parameters Count is %2.2f M.' % ((params_count) * 1e-6))
 
         self.optimizer = optim.Adam(varlist, lr=ps.base_lr, weight_decay=ps.reg_coef)
 
+        self.bps_basis = np.load(os.path.join(ps.dataset_dir, 'bps_basis_1024.npz'))['basis']
         self.logger = logger
         self.best_loss_total = np.inf
         self.try_num = ps.try_num
@@ -188,30 +171,30 @@ class SuperCapTrainer:
         self.ps = ps
 
         if ps.best_model_fname is not None:
-            self._get_scmodel().load_state_dict(torch.load(ps.best_model_fname, map_location=self.comp_device), strict=False)
+            self._get_bhocmodel().load_state_dict(torch.load(ps.best_model_fname, map_location=self.comp_device), strict=False)
             logger('Restored model from %s' % ps.best_model_fname)
 
         for data in self.ds_val:
             one_batch = data
-            rnd_ids = np.random.choice(ps.batch_size, ps.num_bodies_to_display)
+            rnd_ids = np.random.choice(ps.batch_size, ps.n_samples_to_display)
             break
         self.vis_porig = {k: one_batch[k][rnd_ids].to(self.comp_device) for k in one_batch.keys()}
 
 
-        # self.swriter.add_graph(self.sc_model.module, self.vis_porig, True)
+        # self.swriter.add_graph(self.bhoc_model.module, self.vis_porig, True)
 
-    def _get_scmodel(self):
-        return self.sc_model.module if isinstance(self.sc_model, torch.nn.DataParallel) else self.sc_model
+    def _get_bhocmodel(self):
+        return self.bhoc_model.module if isinstance(self.bhoc_model, torch.nn.DataParallel) else self.bhoc_model
 
     def train(self):
-        self.sc_model.train()
+        self.bhoc_model.train()
         save_every_it = len(self.ds_train) / self.ps.log_every_epoch
         train_loss_dict = {}
         for it, dorig in enumerate(self.ds_train):
             dorig = {k:dorig[k].to(self.comp_device) for k in dorig.keys()}
 
             self.optimizer.zero_grad()
-            drec = self.sc_model(dorig['markers_bps'])
+            drec = self.bhoc_model(**dorig)
 
             loss_total, cur_loss_dict = self.compute_loss(dorig, drec)
             loss_total.backward()
@@ -220,7 +203,7 @@ class SuperCapTrainer:
             train_loss_dict = {k: train_loss_dict.get(k, 0.0) + v.item() for k, v in cur_loss_dict.items()}
             if it % (save_every_it + 1) == 0:
                 cur_train_loss_dict = {k: v / (it + 1) for k, v in train_loss_dict.items()}
-                train_msg = SuperCapTrainer.creat_loss_message(cur_train_loss_dict, expr_code=self.ps.expr_code,
+                train_msg = BHOCTrainer.creat_loss_message(cur_train_loss_dict, expr_code=self.ps.expr_code,
                                                               epoch_num=self.epochs_completed, it=it,
                                                               try_num=self.try_num, mode='train')
 
@@ -230,13 +213,13 @@ class SuperCapTrainer:
         return train_loss_dict
 
     def evaluate(self, split_name='vald'):
-        self.sc_model.eval()
+        self.bhoc_model.eval()
         eval_loss_dict = {}
         data = self.ds_val if split_name == 'vald' else self.ds_test
         with torch.no_grad():
             for dorig in data:
                 dorig = {k: dorig[k].to(self.comp_device) for k in dorig.keys()}
-                drec = self.sc_model(dorig['markers_bps'])
+                drec = self.bhoc_model(**dorig)
                 _, cur_loss_dict = self.compute_loss(dorig, drec)
 
                 eval_loss_dict = {k: eval_loss_dict.get(k, 0.0) + v.item() for k, v in cur_loss_dict.items()}
@@ -245,32 +228,29 @@ class SuperCapTrainer:
         return eval_loss_dict
 
     def compute_loss(self, dorig, drec):
-        '''
-        given two data dictionaries, compute L2 distance on values represented by keys in drec
-        :param dorig: original data terms
-        :param drec: reconstructed data
-        :return:
-        '''
 
-        MESH_SCALER = 1e3
+        device = dorig['s_delta'].device
+        dtype = dorig['s_delta'].dtype
 
-        if 'betas' not in list(drec.keys()): drec['betas'] = dorig['betas']
+        q_z = torch.distributions.normal.Normal(drec['mean'], drec['std'])
 
-        body_rec = self.bm_train(root_orient=drec['root_orient'], pose_body=drec['pose_body'], betas=drec['betas'], return_dict=True)['v']
-        body_orig = self.bm_train(root_orient=dorig['root_orient'], pose_body=dorig['pose_body'], betas=dorig['betas'], return_dict=True)['v']
+        loss_mesh_rec = (1. - self.ps.kl_coef) * self.LossL2(dorig['s_delta'], drec['s_delta_rec'])
+        # loss_mesh_rec = (1. - self.ps.kl_coef) * torch.mean(torch.abs(dorig['s_delta'] - drec['s_delta_rec']))
 
-        loss_dict = {
-            'mesh_rec': self.LossL1(body_rec, body_orig) * MESH_SCALER,
-            # 'betas': torch.pow(drec['betas'] - dorig['betas'], 2).mean(),
-            }
+        # KL loss
+        p_z = torch.distributions.normal.Normal(
+            loc=torch.tensor(np.zeros([self.ps.batch_size, self.ps.latentD]), requires_grad=False).to(device).type(dtype),
+            scale=torch.tensor(np.ones([self.ps.batch_size, self.ps.latentD]), requires_grad=False).to(device).type(dtype))
+        loss_kl = self.ps.kl_coef * torch.mean(torch.sum(torch.distributions.kl.kl_divergence(q_z, p_z), dim=[1]))
 
-        if self.sc_model.training and self.epochs_completed < 10:
-            loss_dict['loss_root_orient'] = self.LossL2(dorig['root_orient'], drec['root_orient'])
-            loss_dict['loss_pose_body'] = self.LossL2(dorig['pose_body'], drec['pose_body'])
+        loss_dict = {'loss_kl': loss_kl,
+                     'loss_mesh_rec': loss_mesh_rec,
+                     }
 
-        loss_dict['loss_total'] = torch.stack(list(loss_dict.values())).sum()
+        loss_total = torch.stack(list(loss_dict.values())).sum()
+        loss_dict['loss_total'] = loss_total
 
-        return loss_dict['loss_total'], loss_dict
+        return loss_total, loss_dict
 
     def perform_training(self, n_epochs=None, message=None):
         starttime = datetime.now().replace(microsecond=0)
@@ -298,7 +278,7 @@ class SuperCapTrainer:
             self.epochs_completed += 1
 
             with torch.no_grad():
-                eval_msg = SuperCapTrainer.creat_loss_message(eval_loss_dict, expr_code=self.ps.expr_code,
+                eval_msg = BHOCTrainer.creat_loss_message(eval_loss_dict, expr_code=self.ps.expr_code,
                                                               epoch_num=self.epochs_completed, it=len(self.ds_val),
                                                               try_num=self.try_num, mode='evald')
                 if eval_loss_dict['loss_total'] < self.best_loss_total:
@@ -307,13 +287,13 @@ class SuperCapTrainer:
                             self.try_num, self.epochs_completed)), isfile=True)
                     self.logger(eval_msg + ' ** ')
                     self.best_loss_total = eval_loss_dict['loss_total']
-                    torch.save(self.sc_model.module.state_dict() if isinstance(self.sc_model,
-                                                                                     torch.nn.DataParallel) else self.sc_model.state_dict(),
+                    torch.save(self.bhoc_model.module.state_dict() if isinstance(self.bhoc_model,
+                                                                                     torch.nn.DataParallel) else self.bhoc_model.state_dict(),
                                self.ps.best_model_fname)
 
                     imgname = '[%s]_TR%02d_E%03d.png' % (self.ps.expr_code, self.try_num, self.epochs_completed)
                     imgpath = os.path.join(self.ps.work_dir, 'images', imgname)
-                    # SuperCapTrainer.vis_results(self.vis_porig, bm=self.bm, sc_model=self.sc_model, vposer=self.vposer, imgpath=imgpath)
+                    BHOCTrainer.vis_results(self.vis_porig, self.bhoc_model, self.bps_basis, imgpath=imgpath)
                 else:
                     self.logger(eval_msg)
 
@@ -339,7 +319,7 @@ class SuperCapTrainer:
             expr_code, try_num, epoch_num, it, mode, loss_dict['loss_total'], ext_msg)
 
     @staticmethod
-    def vis_results(dorig, bm, sc_model, imgpath, vposer=None, view_angles=[0, 180]):
+    def vis_results(dorig, bhoc_model, basis, imgpath, view_angles=[0, 180]):
         from human_body_prior.mesh import MeshViewer
         from human_body_prior.tools.omni_tools import copy2cpu as c2c
         import trimesh
@@ -349,63 +329,46 @@ class SuperCapTrainer:
 
         from human_body_prior.tools.visualization_tools import imagearray2file
 
-        imw, imh = 800, 800
+        imw, imh = 400, 400
 
         mv = MeshViewer(width=imw, height=imh, use_offscreen=True)
         mv.render_wireframe = True
 
+        drec = bhoc_model(**dorig)
+        from basis_point_sets.bps import reconstruct_from_bps
 
-        drec = sc_model(dorig['markers_bps'])
+        images = np.zeros([len(view_angles) + 1, len(dorig['o_delta']), 1, imw, imh, 3])
 
-        images = np.zeros([len(view_angles) + 1, len(dorig['pose_body']), 1, imw, imh, 3])
-        faces = c2c(bm.f)
+        o_orig_pc = reconstruct_from_bps(c2c(dorig['o_delta']), basis)
+        s_orig_pc = reconstruct_from_bps(c2c(dorig['s_delta']), basis)
+        s_rec_pc = reconstruct_from_bps(c2c(drec['s_delta_rec']), basis)
 
-        for cId in range(0, len(dorig['pose_body'])):
+        for cId in range(0, len(dorig['o_delta'])):
 
-            orig_bodyB = bm(betas=dorig['betas'][cId:cId + 1])
-            orig_bodyB_mesh = trimesh.Trimesh(vertices=c2c(orig_bodyB.v[0]), faces=faces, vertex_colors=np.tile(colors['grey'], (6890, 1)))
+            o_orig_mesh = points_to_spheres(o_orig_pc[cId], radius=0.01, vc=colors['red'])
+            s_orig_mesh = points_to_spheres(s_orig_pc[cId], radius=0.01, vc=colors['blue'])
 
-            orig_body = bm(root_orient= dorig['root_orient'][cId:cId+1],
-                         pose_body=dorig['pose_body'][cId:cId+1],
-                         betas=dorig['betas'][cId:cId+1])
+            s_rec_mesh = points_to_spheres(s_rec_pc[cId], radius=0.01, vc=colors['blue'])
 
-            orig_body_mesh = trimesh.Trimesh(vertices=c2c(orig_body.v[0]), faces=faces, vertex_colors=np.tile(colors['grey'], (6890, 1)))
+            all_meshes = s_rec_mesh + o_orig_mesh
 
-            pose_body = drec['pose_body'][cId:cId+1] if 'pose_body' in list(drec.keys()) else vposer.decode(drec['poZ_body'][cId:cId+1], output_type='aa').view(1, -1)
-            betas = drec['betas'][cId:cId+1] if 'betas' in list(drec.keys()) else dorig['betas'][cId:cId+1]
-
-            rec_bodyB = bm(betas=betas)
-            rec_bodyB_mesh = trimesh.Trimesh(vertices=c2c(rec_bodyB.v[0]), faces=faces, vertex_colors=np.tile(colors['red'], (6890, 1)))
-
-            rec_body = bm(root_orient=drec['root_orient'][cId:cId+1],
-                           pose_body=pose_body,
-                           betas=betas,
-                           )# body gender is assumed to be given. trans is for visualization only
-            rec_body_mesh = trimesh.Trimesh(vertices=c2c(rec_body.v[0]), faces=faces, vertex_colors=np.tile(colors['red'], (6890, 1)))
-
-
-
-            all_meshes = [orig_body_mesh, rec_body_mesh]
-            all_meshesB = [orig_bodyB_mesh, rec_bodyB_mesh]
-
-            apply_mesh_tranfsormations_(all_meshes, trimesh.transformations.rotation_matrix(np.radians(-90), (1, 0, 0)))
-            # apply_mesh_tranfsormations_(all_meshesB, trimesh.transformations.rotation_matrix(np.radians(-90), (1, 0, 0)))
-            mv.set_meshes(all_meshesB, group_name='static')
-            images[0, cId, 0] = mv.render()
+            # apply_mesh_tranfsormations_(all_meshes, trimesh.transformations.rotation_matrix(np.radians(-90), (1, 0, 0)))
+            #
+            mv.set_meshes(o_orig_mesh+s_orig_mesh, group_name='static')
+            images[0, cId, 0] = mv.render()[:,:,:3]
 
             for rId, angle in enumerate(view_angles):
                 if angle != 0: apply_mesh_tranfsormations_(all_meshes, trimesh.transformations.rotation_matrix(np.radians(angle), (0, 1, 0)))
                 mv.set_meshes(all_meshes, group_name='static')
-                images[rId+1, cId, 0] = mv.render()
+                images[rId+1, cId, 0] = mv.render()[:,:,:3]
                 if angle != 0: apply_mesh_tranfsormations_(all_meshes, trimesh.transformations.rotation_matrix(np.radians(-angle), (0, 1, 0)))
 
         imagearray2file(images, imgpath)
 
 
 if __name__ == '__main__':
-    from supercap.data.prepare_data_I import gdr2num
 
-    expr_code = 'V01_01_00'
+    expr_code = 'V01_05_02'
 
     default_ps_fname = 'bhoc_defaults.ini'
 
@@ -414,16 +377,20 @@ if __name__ == '__main__':
     work_dir = os.path.join(base_dir, expr_code)
 
     params = {
-        'n_neurons': 512,
-        'batch_size': 512,
+        'n_neurons': 1024,
+        'batch_size': 256,
         'n_workers': 10,
         'cuda_id': 0,
-        'use_multigpu':True,
-        'n_bps': 512,
+        'use_multigpu':False,
+        'latentD': 128,
+        'kl_coef': 1e-5,
+
+        'in_features': 2048,
+        'out_features':1024*3,
 
         'reg_coef': 5e-4,
 
-        'base_lr': 5e-4,
+        'base_lr': 5e-3,
 
         'best_model_fname': None, # trained without betas before
         'log_every_epoch': 2,
@@ -433,18 +400,17 @@ if __name__ == '__main__':
         'dataset_dir': '/ps/scratch/body_hand_object_contact/bhoc_network/data/V01_01_00',
     }
 
-    supercap_trainer = SuperCapTrainer(work_dir, ps=Configer(default_ps_fname=default_ps_fname, **params))
-    ps = supercap_trainer.ps
+    bhoc_trainer = BHOCTrainer(work_dir, ps=Configer(default_ps_fname=default_ps_fname, **params))
+    ps = bhoc_trainer.ps
 
     ps.dump_settings(os.path.join(work_dir, 'TR%02d_%s' % (ps.try_num, os.path.basename(default_ps_fname))))
 
     expr_message = '\n[%s] %d H neurons, batch_size=%d, BPS_NUM=512\n'% (ps.expr_code, ps.n_neurons, ps.batch_size)
-    expr_message += 'Given BPS representation will output pose_body, root_orient and betas.\n'
-    expr_message += 'L1 loss on the body mesh.\n'
-    expr_message += 'Training on subsample of AMASS that are hard sampled using vposer+ easy samples.\n'
-    expr_message += 'Female only BM is used.\n'
+    expr_message += 'Given concatenated BPS representation of the hand and the object predict hand delta\n'
+    expr_message += 'L2 loss on the hand deltas.\n'
+    expr_message += 'Starting Conditional VAE.\n'
     expr_message += '\n'
 
-    supercap_trainer.logger(expr_message)
-    supercap_trainer.perform_training()
+    bhoc_trainer.logger(expr_message)
+    bhoc_trainer.perform_training()
     ps.dump_settings(os.path.join(work_dir, 'TR%02d_%s' % (ps.try_num, os.path.basename(default_ps_fname))))
