@@ -18,7 +18,6 @@ import time
 import warnings
 from collections import Counter
 
-
 from psbody.mesh import MeshViewers, MeshViewer, Mesh
 from experiments.nima.tools.visualization_helpers import spheres_for
 from psbody.mesh.lines import Lines

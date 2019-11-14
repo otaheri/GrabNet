@@ -6,7 +6,7 @@ import glob
 import numpy as np
 import pickle
 
-class BHOC_DS(Dataset):
+class GRAB_DS(Dataset):
     def __init__(self, dataset_dir, ):
 
         self.ds = {}
@@ -42,15 +42,15 @@ if __name__ == '__main__':
     from tqdm import tqdm
     from basis_point_sets.bps import reconstruct_from_bps
     from psbody.mesh import MeshViewer
-    from bhoc.tools.vis_tools import colors, points_to_spheres
+    from grab.tools.vis_tools import colors, points_to_spheres
     import time
 
     from human_body_prior.tools.omni_tools import copy2cpu as c2c
     
     batch_size = 256
-    dataset_dir = '/ps/scratch/body_hand_object_contact/bhoc_network/data/V01_01_00/test'
+    dataset_dir = '/ps/scratch/body_hand_object_contact/grab_net/data/V01_01_00/test'
 
-    ds = BHOC_DS(dataset_dir=dataset_dir)
+    ds = GRAB_DS(dataset_dir=dataset_dir)
     print('dataset size: %d'%len(ds))
 
     dataloader = DataLoader(ds, batch_size=batch_size, shuffle=True, num_workers=10, drop_last=False)

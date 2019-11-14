@@ -9,11 +9,10 @@ import numpy as np
 
 import torch
 
-# from human_body_prior.tools.omni_tools import colors
 from human_body_prior.tools.omni_tools import makepath, log2file
 
 from human_body_prior.body_model.body_model import BodyModel
-from bhoc.tools.object_model import ObjectModel
+from grab.tools.object_model import ObjectModel
 from human_body_prior.tools.omni_tools import copy2cpu as c2c
 from psbody.mesh import Mesh
 from human_body_prior.tools.omni_tools import colors
@@ -24,6 +23,7 @@ from basis_point_sets.bps_torch import convert_to_bps_batch, convert_to_bps_cham
 from psbody.mesh import Mesh, MeshViewer
 import pickle
 
+from grab.tools.rotations import rotateXYZ
 
 def get_object_names(contact_results_dir):
     object_names = []
@@ -90,10 +90,11 @@ def load_object_verts(object_info_path, max_num_object_verts = 10000):
     return get_verts
 
 
-def prepare_bhoc_dataset(data_workdir, contacts_dir, object_splits, logger=None):
+def prepare_grab_dataset(data_workdir, contacts_dir, object_splits, logger=None):
     BPS_N_POINTS = 1024
     FPS_DS_RATE = 5
     MAX_NUM_OBJECT_VERTS = 5000 # equal to the number of hand verts
+    NUM_AUGMENTATION = 2
 
     include_joints = list(range(41, 56))
     exclude_joints = list(range(26, 41))
@@ -105,9 +106,7 @@ def prepare_bhoc_dataset(data_workdir, contacts_dir, object_splits, logger=None)
         basis = generate_bps(n_points=BPS_N_POINTS, radius=0.18, n_dims=3, kd_ordering=True)
         np.savez(bps_basis_fname, basis=basis)
 
-    part2vids = np.load('/ps/scratch/body_hand_object_contact/bhoc_network/part2vids.npz')
-
-    comp_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    part2vids = np.load('/ps/scratch/body_hand_object_contact/grab_net/part2vids.npz')
 
     hand_vids = part2vids['handR']
 
@@ -115,7 +114,7 @@ def prepare_bhoc_dataset(data_workdir, contacts_dir, object_splits, logger=None)
 
     if logger is None:
         logger = log2file()
-        logger('Starting augmenting task at %s'%datetime.strftime(starttime, '%Y%m%d_%H%M'))
+        logger('Starting data preparation at %s'%datetime.strftime(starttime, '%Y%m%d_%H%M'))
 
     shutil.copy2(sys.argv[0], os.path.join(data_workdir, os.path.basename(sys.argv[0]).replace('.py', '_%s.py' % datetime.strftime(starttime, '%Y%m%d_%H%M'))))
 
@@ -128,17 +127,20 @@ def prepare_bhoc_dataset(data_workdir, contacts_dir, object_splits, logger=None)
     subject_infos = {}
 
     for split_name in object_splits.keys():
-        outfname = makepath(os.path.join(data_workdir, split_name, 'os_delta.pt'), isfile=True)
+        outfname = makepath(os.path.join(data_workdir, split_name, 'o_delta.pt'), isfile=True)
 
         if os.path.exists(outfname):
             logger('Results for %s split already exist.'%(split_name))
             continue
+        else:
+            logger('Processing data for %s split.'%(split_name))
+
 
         contact_fnames = glob.glob(os.path.join(contacts_dir, '*/*_stageII.pkl'))
 
-        out_data = {'os_delta': [], 'o_delta':[], 's_delta':[], 'offset':[], 'pose_hand':[]}
+        out_data = {'o_delta':[], 's_delta':[], 'offset':[], 'poseHR':[], 's_verts':[]}
         # contact_maps_fnames = []
-        for contact_fname in tqdm(contact_fnames):
+        for contact_fname in contact_fnames:
             object_name = os.path.basename(contact_fname).split('_')[0]
             if object_name not in object_splits[split_name]: continue
             subject_name = contact_fname.split('/')[-2]
@@ -169,7 +171,9 @@ def prepare_bhoc_dataset(data_workdir, contacts_dir, object_splits, logger=None)
 
             object_parms = {k: torch.from_numpy(v).type(torch.float32) for k, v in object_parms.items()}
 
-            verts_o = c2c(om(**object_parms).v)
+            o_verts = c2c(om(**object_parms).v)
+            offset = o_verts.mean(1)[:, None] # center both wrt to object
+
             body_full_pose = data_s['pose_est_fullposes'][frame_mask]
             body_params = {'root_orient': body_full_pose[:, :3],
                            'pose_body': body_full_pose[:, 3:66],
@@ -178,33 +182,52 @@ def prepare_bhoc_dataset(data_workdir, contacts_dir, object_splits, logger=None)
                            }
             body_params = {k: torch.from_numpy(v).type(torch.float32) for k, v in body_params.items()}
 
-            verts_s = c2c(bm(**body_params).v[:,hand_vids])
+            s_verts = c2c(bm(**body_params).v[:,hand_vids])
 
-            verts_os = np.concatenate([verts_o, verts_s], axis=1)
+            os_verts = np.concatenate([o_verts, s_verts], axis=1)
 
-            offset = verts_o.mean(1)[:, None] # center both wrt to object
+            o_verts -= offset
+            s_verts -= offset
+            os_verts -= offset
 
             # basis_batched = torch.from_numpy(np.repeat(basis[None], repeats=T, axis=0).astype(np.float32))
-
             # os_delta, o_delta, s_delta = [], [], []
             # for tId in range(T):
-            #     os_delta.append(convert_to_bps(verts_os[tId]-offset[tId], basis, return_deltas=True)[1])
-            #     o_delta.append(convert_to_bps(verts_o[tId]-offset[tId], basis, return_deltas=True)[1])
-            #     s_delta.append(convert_to_bps(verts_s[tId]-offset[tId], basis, return_deltas=True)[1])
+            #     os_delta.append(convert_to_bps(os_verts[tId]-offset[tId], basis, return_deltas=True)[1])
+            #     o_delta.append(convert_to_bps(o_verts[tId]-offset[tId], basis, return_deltas=True)[1])
+            #     s_delta.append(convert_to_bps(s_verts[tId]-offset[tId], basis, return_deltas=True)[1])
+            # os_delta, o_delta, s_delta = torch.cat(os_delta), torch.cat(o_delta), torch.cat(s_delta)
 
             sys.path.append('/is/ps2/nghorbani/code-repos/basis_point_sets/chamfer-extension')
 
-            _, os_delta = convert_to_bps_chamfer(verts_os-offset, basis, return_deltas=True)
-            _, o_delta = convert_to_bps_chamfer(verts_o-offset, basis, return_deltas=True)
-            _, s_delta = convert_to_bps_chamfer(verts_s-offset, basis, return_deltas=True)
+            # _, os_delta = convert_to_bps_chamfer(os_verts, basis, return_deltas=True)
+            _, o_delta = convert_to_bps_chamfer(o_verts, basis, return_deltas=True)
+            _, s_delta = convert_to_bps_chamfer(s_verts, basis, return_deltas=True)
 
-            # os_delta, o_delta, s_delta = torch.cat(os_delta), torch.cat(o_delta), torch.cat(s_delta)
-
-            out_data['os_delta'].append(os_delta)
+            # out_data['os_delta'].append(os_delta)
+            out_data['s_verts'].append(s_verts)
             out_data['o_delta'].append(o_delta)
             out_data['s_delta'].append(s_delta)
             out_data['offset'].append(offset)
-            out_data['pose_hand'].append(body_full_pose[:, 75:])
+            out_data['poseHR'].append(body_full_pose[:, 120:])
+
+            if split_name != 'test':
+                # logger('Augmenting %s split'%split_name)
+                for _ in range(NUM_AUGMENTATION):
+                    rnd_rotation = np.random.random([os_verts.shape[0], 3])*360
+                    o_verts_rotated = rotateXYZ(o_verts, rnd_rotation)
+                    s_verts_rotated = rotateXYZ(s_verts, rnd_rotation)
+
+                    _, o_delta = convert_to_bps_chamfer(o_verts_rotated, basis, return_deltas=True)
+                    _, s_delta = convert_to_bps_chamfer(s_verts_rotated, basis, return_deltas=True)
+
+                    # out_data['os_delta'].append(os_delta)
+                    out_data['s_verts'].append(s_verts_rotated)
+                    out_data['o_delta'].append(o_delta)
+                    out_data['s_delta'].append(s_delta)
+                    out_data['offset'].append(offset)
+                    out_data['poseHR'].append(body_full_pose[:, 120:])
+
 
         for k,v in out_data.items():
 
@@ -213,7 +236,7 @@ def prepare_bhoc_dataset(data_workdir, contacts_dir, object_splits, logger=None)
             out_data[k] = torch.from_numpy(np.concatenate(v))
             torch.save(out_data[k], outfname)
 
-        logger('%d datapoints for %s'%(out_data['os_delta'].shape[0], split_name))
+        logger('%d datapoints for %s'%(out_data['o_delta'].shape[0], split_name))
 
     with open(object_info_path, 'wb') as f:
         pickle.dump(object_loader.object_infos, f, protocol=2)
@@ -224,23 +247,24 @@ def prepare_bhoc_dataset(data_workdir, contacts_dir, object_splits, logger=None)
 
 if __name__ == '__main__':
 
+    msg = 'Add poseHR and s_verts for hand vertices\n'
+    msg = '1X  data augmentation\n'
     msg = '\n'
 
     contacts_dir = '/ps/scratch/body_hand_object_contact/contact_results/17/03_thrshld_50e_6_final'
     # contacts_dir = '/ps/scratch/body_hand_object_contact/contact_results/16_omid/02_thrshld_20e_6_final'
     # contacts_dir = '/ps/scratch/body_hand_object_contact/contact_results/16_01_thrshld_15e_6_final'
     object_names = get_object_names(contacts_dir)
-    
-    
+
     object_splits = {
-        'test': ['elephant', 'cubesmall', 'wineglass','toothbrush', 'binoculars'],
-        'vald': ['banana', 'toothpaste', 'mug', 'waterbottle', 'fryingpan']
+        'test': ['mug', 'wineglass','camera', 'binoculars', 'fryingpan'],
+        'vald': ['apple', 'toothpaste', 'elephant', 'hand']
     }
     object_splits['train'] = list(set(object_names).difference(set(object_splits['test'] + object_splits['vald'])))
 
-    expr_code = 'V01_01_00'
+    expr_code = 'V01_05_00'
 
-    data_workdir = os.path.join('/ps/scratch/body_hand_object_contact/bhoc_network/data', expr_code)
+    data_workdir = os.path.join('/ps/scratch/body_hand_object_contact/grab_net/data', expr_code)
     logger = log2file(os.path.join(data_workdir, '%s.log' % (expr_code)))
 
     logger('expr_code: %s'%expr_code)
@@ -248,4 +272,4 @@ if __name__ == '__main__':
 
     logger(msg)
 
-    final_dsdir = prepare_bhoc_dataset(data_workdir, contacts_dir, object_splits, logger=logger)
+    final_dsdir = prepare_grab_dataset(data_workdir, contacts_dir, object_splits, logger=logger)

@@ -167,9 +167,7 @@ class ContactDataSet(data.Dataset):
         output_contact_data = []
         self.frame_idx = []  #### to know which object to use for each frame
 
-
         self.generated_bps = bps.generate_bps(n_points=self.n_points, radius=1.15)
-
 
 
         iter_on = self.objectbased_filenames if 'object' in based_on else self.subjectbased_filenames
@@ -245,7 +243,7 @@ class ContactDataSet(data.Dataset):
                     print  os.path.basename(object_mesh_fname)
                     object_fullpts = Mesh(filename=object_mesh_fname).v
                     self.object_fullpts[object_name] = object_fullpts
-                    if False:
+                    if True:
                         offset = (object_fullpts.max(0, keepdims=True) + object_fullpts.min(0, keepdims=True)) / 2
                         object_fullpts -= offset
                         scale = max(object_fullpts.max(0) - object_fullpts.min(0)) / 2
@@ -273,10 +271,10 @@ class ContactDataSet(data.Dataset):
                 contact_frames_object = contact_frames_object[:,self.object_pts_choice[object_name]]
 
 
-                closest_bps2object = np.unique(trgt2src.reshape(-1)[self.object_pts_choice[object_name]])
-                contact_bps = np.zeros_like(contact_frames_object[:, self.object_pts_choice[object_name]])
-                contact_bps[:,closest_bps2object] = contact_frames_object[:,self.object_pts_choice[object_name][closest_bps2object]]
-                contact_frames_object = contact_bps
+                # closest_bps2object = np.unique(trgt2src.reshape(-1)[self.object_pts_choice[object_name]])
+                # contact_bps = np.zeros_like(contact_frames_object[:, self.object_pts_choice[object_name]])
+                # contact_bps[:,closest_bps2object] = contact_frames_object[:,self.object_pts_choice[object_name][closest_bps2object]]
+                # contact_frames_object = contact_bps
 
                 object_names = np.repeat(object_name, contact_frames_object.shape[0], axis=0)
                 input = object_data
@@ -312,13 +310,18 @@ class ContactDataSet(data.Dataset):
 
 if __name__=='__main__':
 
-    contact_parent_path = '/ps/project/body_hand_object_contact/contact_results/13_omid/190920_00174/02'
+    contact_parent_path = '/ps/scratch/body_hand_object_contact/contact_results/16_omid'
+    contact_expr_id = '01_thrshld_15e_6_final'
+
+    n_points = 5000
 
     params = {  'batch_size': 32,
                 'shuffle': True}
 
     # a = contact_fname_loader(contact_parent_path=contact_parent_path)
-    training_set = ContactDataSet(contact_parent_path, n_sample_points=5000, train=True, intent='all')
+    # training_set = ContactDataSet(contact_parent_path, n_sample_points=5000, train=True, intent='all')
+    training_set = ContactDataSet(contact_parent_path,contact_expr_id, n_sample_points=n_points, train=False, num_contact_labels=32, intent='all')
+
     a = training_set[1]
     training_generator = data.DataLoader(training_set, **params)
 
