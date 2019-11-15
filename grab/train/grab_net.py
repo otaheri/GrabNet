@@ -34,7 +34,6 @@ from human_body_prior.train.vposer_smpl import ContinousRotReprDecoder
 from human_body_prior.train.vposer_smpl import VPoser
 from basis_point_sets.bps_torch import convert_to_bps_batch
 
-
 class ResBlock(nn.Module):
 
     def __init__(self, Fin, Fout, n_neurons=256):
@@ -95,15 +94,15 @@ class GRAB(nn.Module):
         self.grab_dec_out_trans = nn.Linear(n_neurons, 3)
         # self.grab_dec_out = nn.Linear(n_neurons, out_features)
 
-    def encode(self, o_delta, s_delta):
+    def encode(self, delta_object, delta_hand_mano):
         '''
 
         :param Pin: Nx(numjoints*3)
         :param rep_type: 'matrot'/'aa' for matrix rotations or axis-angle
         :return:
         '''
-        o_bps = torch.sqrt(torch.pow(o_delta, 2).sum(2))
-        s_bps = torch.sqrt(torch.pow(s_delta, 2).sum(2))
+        o_bps = torch.sqrt(torch.pow(delta_object, 2).sum(2))
+        s_bps = torch.sqrt(torch.pow(delta_hand_mano, 2).sum(2))
 
         in_bps = torch.cat([o_bps, s_bps], dim=1)
 
@@ -117,8 +116,9 @@ class GRAB(nn.Module):
         # Xout = F.leaky_relu(self.grab_enc_fc2(Xout), negative_slope=.2)
         return torch.distributions.normal.Normal(self.grab_enc_mu(X2), F.softplus(self.grab_enc_logvar(X2)))
 
-    def decode(self, Zin, o_delta):
-        o_bps = torch.sqrt(torch.pow(o_delta, 2).sum(2))
+    def decode(self, Zin, delta_object):
+        bs = Zin.shape[0]
+        o_bps = torch.sqrt(torch.pow(delta_object, 2).sum(2))
         z_conditional = torch.cat([Zin, o_bps], dim=1)
 
         X1 = self.grab_dec_fcb1(z_conditional, True)
@@ -133,26 +133,37 @@ class GRAB(nn.Module):
         poseHR = poseHR.view([Zin.shape[0], 1, -1, 9])
         poseHR = VPoser.matrot2aa(poseHR).view(Zin.shape[0],-1)
 
+        root_orient = poseHR[:, :3]
+        pose_hand = poseHR[:, 3:]
         trans = self.grab_dec_out_trans(X2)
 
-        return poseHR, trans
+        return {'root_orient': root_orient, 'pose_hand':pose_hand, 'trans':trans}
 
-    def forward(self, o_delta, s_delta, **kwargs):
+    def forward(self, delta_object, delta_hand_mano, **kwargs):
         '''
 
-        :param o_delta: bps_delta of object: Nxn_bpsx3
-        :param s_delta: bps_delta of subject, e.g. hand: Nxn_bpsx3
+        :param delta_object: bps_delta of object: Nxn_bpsx3
+        :param delta_hand_mano: bps_delta of subject, e.g. hand: Nxn_bpsx3
         :param output_type: bps_delta of something, e.g. hand: Nxn_bpsx3
         :return:
         '''
-        q_z = self.encode(o_delta, s_delta)
+        q_z = self.encode(delta_object, delta_hand_mano)
         q_z_sample = q_z.rsample()
-        poseHR, trans = self.decode(q_z_sample, o_delta)
+        hand_parms= self.decode(q_z_sample, delta_object)
 
         results = {'mean':q_z.mean, 'std':q_z.scale}
-        results['poseHR'] = poseHR
-        results['trans'] = trans
+        results.update(hand_parms)
         return results
+
+    def sample_poses(self, delta_object, seed=None):
+        n_parms = delta_object.shape[0]
+        np.random.seed(seed)
+        dtype = delta_object.dtype
+        device = delta_object.device
+        self.eval()
+        with torch.no_grad():
+            Zgen = torch.tensor(np.random.normal(0., 1., size=(n_parms, self.latentD)), dtype=dtype).to(device)
+        return self.decode(Zgen, delta_object)
 
 
 class GRABTrainer:
@@ -192,9 +203,9 @@ class GRABTrainer:
         # kwargs = {'num_workers': ps.n_workers, 'pin_memory': True} if use_cuda else {'num_workers': ps.n_workers}
         ds_train = GRAB_DS(dataset_dir=os.path.join(ps.dataset_dir, 'train'))
         self.ds_train = DataLoader(ds_train, batch_size=ps.batch_size, shuffle=True, drop_last=True, **kwargs)
-        ds_val = GRAB_DS(dataset_dir=os.path.join(ps.dataset_dir, 'vald'))
+        ds_val = GRAB_DS(dataset_dir=os.path.join(ps.dataset_dir, 'train'))
         self.ds_val = DataLoader(ds_val, batch_size=ps.batch_size, shuffle=True, drop_last=True, **kwargs)
-        ds_test = GRAB_DS(dataset_dir=os.path.join(ps.dataset_dir, 'test'))
+        ds_test = GRAB_DS(dataset_dir=os.path.join(ps.dataset_dir, 'train'))
         self.ds_test = DataLoader(ds_test, batch_size=ps.batch_size, shuffle=True, drop_last=False)
 
         logger('Dataset Train, Vald, Test size respectively: %.2f M, %.2f K, %.2f K' %
@@ -288,19 +299,21 @@ class GRABTrainer:
 
     def compute_loss(self, dorig, drec):
 
-        device = dorig['s_delta'].device
-        dtype = dorig['s_delta'].dtype
+        device = dorig['verts_hand_mano'].device
+        dtype = dorig['verts_hand_mano'].dtype
 
         q_z = torch.distributions.normal.Normal(drec['mean'], drec['std'])
 
-        hand_mesh = self.bm_train(root_orient = drec['poseHR'][:, :3], pose_hand = drec['poseHR'][:, 3:], trans = drec['trans']).v - dorig['offset']
+        verts_hand_mano = self.bm_train(**drec).v
 
         # _, s_delta_rec = convert_to_bps_batch(hand_mesh, self.bps_basis_train, normalize=False, return_deltas=True)
+        # _, s_delta_rec = convert_to_bps_batch(drec['s_verts'], self.bps_basis_train, normalize=False, return_deltas=True)
         #hand_mesh = self.bm(pose_body=).v*MESH_SCALER
 
-        loss_mesh_rec = (1. - self.ps.kl_coef) * self.LossL1(dorig['s_verts'], hand_mesh)
-        # loss_bps_rec = 2.*(1. - self.ps.kl_coef) * self.LossL1(dorig['s_delta'], s_delta_rec)
-        # loss_mesh_rec = (1. - self.ps.kl_coef) * torch.mean(torch.abs(dorig['s_delta'] - drec['s_delta_rec']))
+        loss_mesh_rec = (1. - self.ps.kl_coef) * self.LossL1(dorig['verts_hand_mano'], verts_hand_mano)
+        # loss_deltas_rec = 2.*(1. - self.ps.kl_coef) * self.LossL1(dorig['delta_hand_mano'], s_delta_rec)
+        # loss_bps_rec = 2.*(1. - self.ps.kl_coef) * self.LossL1(dorig['delta_hand_mano'], s_delta_rec)
+        # loss_mesh_rec = (1. - self.ps.kl_coef) * torch.mean(torch.abs(dorig['delta_hand_mano'] - drec['s_delta_rec']))
 
         # KL loss
         p_z = torch.distributions.normal.Normal(
@@ -310,12 +323,14 @@ class GRABTrainer:
 
         loss_dict = {'loss_kl': loss_kl,
                      'loss_mesh_rec': loss_mesh_rec,
+                     # 'loss_deltas_rec': loss_deltas_rec,
                      # 'loss_bps_rec': loss_bps_rec,
                      }
 
         if self.grab_model.training and self.epochs_completed < 5:
-            loss_dict['loss_poseHR'] = .5*(1. - self.ps.kl_coef) * torch.mean(torch.sum(torch.pow(dorig['poseHR'] - drec['poseHR'][:, 3:], 2), dim=[-1]))
-            loss_dict['loss_trans'] = .3*(1. - self.ps.kl_coef) * self.LossL2(dorig['offset'][:,0], drec['trans'])
+            loss_dict['loss_poseHR'] = (1. - self.ps.kl_coef) * torch.mean(torch.sum(torch.pow(dorig['pose_hand'] - drec['pose_hand'], 2), dim=[-1]))
+            loss_dict['loss_poseHR'] = (1. - self.ps.kl_coef) * torch.mean(torch.sum(torch.pow(dorig['root_orient'] - drec['root_orient'], 2), dim=[-1]))
+            loss_dict['loss_trans'] =  (1. - self.ps.kl_coef) * self.LossL2(dorig['trans'], drec['trans'])
 
         loss_total = torch.stack(list(loss_dict.values())).sum()
         loss_dict['loss_total'] = loss_total
@@ -326,9 +341,8 @@ class GRABTrainer:
         starttime = datetime.now().replace(microsecond=0)
         if n_epochs is None: n_epochs = self.ps.n_epochs
 
-        self.logger(
-            'Started Training at %s for %d epochs' % (datetime.strftime(starttime, '%Y-%m-%d_%H:%M:%S'), n_epochs))
-        if message is not None: self.logger(expr_message)
+        self.logger('Started Training at %s for %d epochs' % (datetime.strftime(starttime, '%Y-%m-%d_%H:%M:%S'), n_epochs))
+        if message is not None: self.logger(message)
 
         prev_lr = np.inf
 
@@ -363,7 +377,7 @@ class GRABTrainer:
 
                     imgname = '[%s]_TR%02d_E%03d.png' % (self.ps.expr_code, self.try_num, self.epochs_completed)
                     imgpath = os.path.join(self.ps.work_dir, 'images', imgname)
-                    GRABTrainer.vis_results(self.vis_porig, self.grab_model, self.bps_basis, self.bm, imgpath=imgpath)
+                    GRABTrainer.vis_results(self.vis_porig, self.grab_model, self.bm, imgpath=imgpath)
                 else:
                     self.logger(eval_msg)
 
@@ -376,7 +390,7 @@ class GRABTrainer:
                 break
 
         endtime = datetime.now().replace(microsecond=0)
-        self.logger(expr_message)
+        self.logger(message)
         self.logger('Finished Training at %s\n' % (datetime.strftime(endtime, '%Y-%m-%d_%H:%M:%S')))
         self.logger(
             'Training done in %s! Best val total loss achieved: %.2e\n' % (endtime - starttime, self.best_loss_total))
@@ -389,7 +403,7 @@ class GRABTrainer:
             expr_code, try_num, epoch_num, it, mode, loss_dict['loss_total'], ext_msg)
 
     @staticmethod
-    def vis_results(dorig, grab_model, basis, bm, imgpath, view_angles=[0, 180]):
+    def vis_results(dorig, grab_model,  bm, imgpath, view_angles=[0, 90, 180], show_gen=True):
         from human_body_prior.mesh import MeshViewer
         from human_body_prior.tools.omni_tools import copy2cpu as c2c
         import trimesh
@@ -399,48 +413,63 @@ class GRABTrainer:
 
         from human_body_prior.tools.visualization_tools import imagearray2file
 
-        imw, imh = 400, 400
+        imw, imh = 800, 800
 
         mv = MeshViewer(width=imw, height=imh, use_offscreen=True)
-        mv.render_wireframe = True
+        mv.render_wireframe = False
 
         drec = grab_model(**dorig)
-        from basis_point_sets.bps import reconstruct_from_bps
+        # from basis_point_sets.bps import reconstruct_from_bps
 
-        images = np.zeros([len(view_angles) + 1, len(dorig['o_delta']), 1, imw, imh, 3])
+        images = np.zeros([len(view_angles) + 1, len(dorig['delta_object']), 1, imw, imh, 3])
+        images_gen = np.zeros([len(view_angles), len(dorig['delta_object']), 1, imw, imh, 3])
 
-        o_orig_pc = reconstruct_from_bps(c2c(dorig['o_delta']), basis)
-        s_orig_pc = reconstruct_from_bps(c2c(dorig['s_delta']), basis)
+        # o_orig_pc = reconstruct_from_bps(c2c(dorig['delta_object']), basis)
+        # s_orig_pc = reconstruct_from_bps(c2c(dorig['delta_hand_mano']), basis)
 
         # s_rec_pc = reconstruct_from_bps(c2c(drec['s_delta_rec']), basis)
-        hand_mesh = bm(root_orient = drec['poseHR'][:, :3], pose_hand = drec['poseHR'][:, 3:], trans = drec['trans']).v - dorig['offset']
+        verts_hand_orig = bm(**dorig).v
+        verts_hand_rec = bm(**drec).v
+        gen_parms = grab_model.sample_poses(dorig['delta_object'])
+        verts_hand_gen = bm(**gen_parms).v
 
-        for cId in range(0, len(dorig['o_delta'])):
 
-            o_orig_mesh = points_to_spheres(o_orig_pc[cId], radius=0.01, vc=colors['red'])
-            s_orig_mesh = points_to_spheres(s_orig_pc[cId], radius=0.01, vc=colors['blue'])
+        for cId in range(0, len(dorig['delta_object'])):
 
-            s_rec_mesh = trimesh.Trimesh(vertices=c2c(hand_mesh[cId]), faces=c2c(bm.f), vertex_colors=np.tile(colors['blue'], (6890, 1)))
+            object_mesh = points_to_spheres(c2c(dorig['verts_object'][cId]), radius=0.008, vc=colors['green'])
+            # s_orig_mesh = points_to_spheres(s_orig_pc[cId], radius=0.01, vc=colors['blue'])
 
-            all_meshes = [s_rec_mesh] + o_orig_mesh
+            # s_rec_mesh = trimesh.Trimesh(vertices=c2c(drec['s_verts'][cId]), faces=c2c(bm.f), vertex_colors=np.tile(colors['blue'], (6890, 1)))
+            hand_mesh_orig = trimesh.Trimesh(vertices=c2c(verts_hand_orig[cId]), faces=c2c(bm.f), vertex_colors=np.tile(colors['blue'], (6890, 1)))
+            hand_mesh_rec = trimesh.Trimesh(vertices=c2c(verts_hand_rec[cId]), faces=c2c(bm.f), vertex_colors=np.tile(colors['red'], (6890, 1)))
+            if show_gen:
+                hand_mesh_gen = trimesh.Trimesh(vertices=c2c(verts_hand_gen[cId]), faces=c2c(bm.f), vertex_colors=np.tile(colors['orange'], (6890, 1)))
 
-            # apply_mesh_tranfsormations_(all_meshes, trimesh.transformations.rotation_matrix(np.radians(-90), (1, 0, 0)))
-            #
-            mv.set_meshes(o_orig_mesh+s_orig_mesh, group_name='static')
-            images[0, cId, 0] = mv.render()[:,:,:3]
+            all_meshes = [hand_mesh_orig, hand_mesh_rec] + object_mesh
+            if show_gen:
+                all_meshes += [hand_mesh_gen]
+
+            mv.set_meshes([hand_mesh_orig]+object_mesh, group_name='static')
+            images[0, cId, 0] = mv.render()#[:,:,:3]
 
             for rId, angle in enumerate(view_angles):
                 if angle != 0: apply_mesh_tranfsormations_(all_meshes, trimesh.transformations.rotation_matrix(np.radians(angle), (0, 1, 0)))
-                mv.set_meshes(all_meshes, group_name='static')
-                images[rId+1, cId, 0] = mv.render()[:,:,:3]
+                mv.set_meshes([hand_mesh_rec]+object_mesh, group_name='static')
+                images[rId+1, cId, 0] = mv.render()#[:,:,:3]
+                if show_gen:
+                    mv.set_meshes([hand_mesh_gen]+object_mesh, group_name='static')
+                    images_gen[rId, cId, 0] = mv.render()#[:,:,:3]
+
                 if angle != 0: apply_mesh_tranfsormations_(all_meshes, trimesh.transformations.rotation_matrix(np.radians(-angle), (0, 1, 0)))
 
         imagearray2file(images, imgpath)
+        if show_gen:
+            imagearray2file(images_gen, imgpath.replace('.png','_gen.png'))
 
 
 if __name__ == '__main__':
 
-    expr_code = 'V03_06_01'
+    expr_code = 'V03_07_07'
 
     default_ps_fname = 'grab_defaults.ini'
 
@@ -455,8 +484,8 @@ if __name__ == '__main__':
         'cuda_id': 1,
 
         'use_multigpu':False,
-        'latentD': 128,
-        'kl_coef': 1e-3,
+        'latentD': 16,
+        'kl_coef': 5e-3,
 
         'in_features': 2048,
         'out_features':1024*3,
@@ -471,7 +500,7 @@ if __name__ == '__main__':
         'expr_code': expr_code,
         'work_dir': work_dir,
         'n_epochs': 10000,
-        'dataset_dir' : '/ps/scratch/body_hand_object_contact/grab_net/data/V01_04_00',
+        'dataset_dir' : '/ps/scratch/body_hand_object_contact/grab_net/data/V01_07_00',
     }
 
     grab_trainer = GRABTrainer(work_dir, ps=Configer(default_ps_fname=default_ps_fname, **params))
@@ -479,15 +508,15 @@ if __name__ == '__main__':
 
     ps.dump_settings(os.path.join(work_dir, 'TR%02d_%s' % (ps.try_num, os.path.basename(default_ps_fname))))
 
-    expr_message = '\n[%s] %d H neurons, batch_size=%d, BPS_NUM=512\n'% (ps.expr_code, ps.n_neurons, ps.batch_size)
-    expr_message += 'Given concatenated BPS representation of the hand and the object predict hand delta\n'
-    expr_message += 'Conditional VAE.\n'
-    expr_message += 'Regressing HAND Model parameters\n'
-    expr_message += 'Using 2 times data augmentation\n'
-    expr_message += 'Removing BatchNorm\n'
-    expr_message += 'Reconstruction loss on handpose, the resulting mesh, and trans to keep it close to offset.\n'
-    expr_message += 'More sophisticated network\n'
+    msg = '\n[%s] %d H neurons, batch_size=%d, BPS_NUM=1024\n'% (ps.expr_code, ps.n_neurons, ps.batch_size)
+    msg += 'Given the concatenated BPS representation of the hand and the object predict the hand parameters\n'
+    msg += 'Conditional VAE.\n'
+    msg += 'Using no data augmentation.\n'
+    msg += 'Reconstruction loss L1 on modeule created mesh vertices and hand parameters.\n'
+    msg += 'Added object vertices for visualization only.\n'
+    msg += 'Lowered latendD from 128 to 32\n'
+    msg += '\n'
 
-    grab_trainer.logger(expr_message)
+    grab_trainer.logger(msg)
     grab_trainer.perform_training()
     ps.dump_settings(os.path.join(work_dir, 'TR%02d_%s' % (ps.try_num, os.path.basename(default_ps_fname))))

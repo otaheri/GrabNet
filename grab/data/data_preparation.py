@@ -16,14 +16,17 @@ from grab.tools.object_model import ObjectModel
 from human_body_prior.tools.omni_tools import copy2cpu as c2c
 from psbody.mesh import Mesh
 from human_body_prior.tools.omni_tools import colors
+from grab.tools.vis_tools import colors, points_to_spheres
 
 from basis_point_sets.bps import generate_bps, convert_to_bps, reconstruct_from_bps
 from basis_point_sets.bps_torch import convert_to_bps_batch, convert_to_bps_chamfer
 
 from psbody.mesh import Mesh, MeshViewer
 import pickle
+from smplx.lbs import batch_rodrigues
+from human_body_prior.train.vposer_smpl import VPoser  # matrot2aa
+from grab.tools.rotations import rotateXYZ, local2global_pose, rotateZ
 
-from grab.tools.rotations import rotateXYZ
 
 def get_object_names(contact_results_dir):
     object_names = []
@@ -69,13 +72,15 @@ def load_object_verts(object_info_path, max_num_object_verts = 10000):
     else:
         object_infos = {}
 
-    def get_verts(object_name, data_c=None):
+    def get_verts(object_name, data_c=None, subsample = True):
         if object_name not in object_infos:
             np.random.seed(100)  # this makes it possible to reproduce the sample ids
-            object_verts = Mesh(filename=data_c['object_mesh']).v
-            object_verts_dsampl_ids = np.random.choice(object_verts.shape[0], max_num_object_verts, replace=False)
-            object_verts_dsampl = object_verts[object_verts_dsampl_ids]
-            object_infos[object_name] = {'object_verts': object_verts,
+            object_mesh = Mesh(filename=data_c['object_mesh'])
+            verts_object = object_mesh.v
+            object_verts_dsampl_ids = np.random.choice(verts_object.shape[0], max_num_object_verts, replace=False)
+            object_verts_dsampl = verts_object[object_verts_dsampl_ids]
+            object_infos[object_name] = {'verts_object': verts_object,
+                                         'faces_object': object_mesh.f,
                                          'object_verts_dsampl_ids': object_verts_dsampl_ids,
                                          'object_verts_dsampl': object_verts_dsampl}
         else:
@@ -89,10 +94,9 @@ def load_object_verts(object_info_path, max_num_object_verts = 10000):
     get_verts.object_infos = object_infos
     return get_verts
 
-
 def prepare_grab_dataset(data_workdir, contacts_dir, object_splits, logger=None):
     BPS_N_POINTS = 1024
-    FPS_DS_RATE = 5
+    FPS_DS_RATE = 2
     MAX_NUM_OBJECT_VERTS = 5000 # equal to the number of hand verts
     NUM_AUGMENTATION = 2
 
@@ -109,6 +113,8 @@ def prepare_grab_dataset(data_workdir, contacts_dir, object_splits, logger=None)
     part2vids = np.load('/ps/scratch/body_hand_object_contact/grab_net/part2vids.npz')
 
     hand_vids = part2vids['handR']
+    hand_model_path = '/ps/scratch/body_hand_object_contact/body_models/models/models_unchumpy/MANO_RIGHT.npz'
+    mano_smplxhand_offset = torch.from_numpy(np.array([0.0957, 0.0064, 0.0062]).reshape(1,-1).astype(np.float32))
 
     starttime = datetime.now().replace(microsecond=0)
 
@@ -120,6 +126,7 @@ def prepare_grab_dataset(data_workdir, contacts_dir, object_splits, logger=None)
 
     logger('Starting with data preparation')
     logger('Num objects per datasplit: %s'%(', '.join(['%s: %d'%(k, len(v)) for k,v in object_splits.items()])))
+    logger('Will augment train split %d times' % (NUM_AUGMENTATION))
 
     object_info_path = makepath(os.path.join(data_workdir, 'object_infos.pkl'), isfile=True)
     object_loader = load_object_verts(object_info_path, max_num_object_verts=MAX_NUM_OBJECT_VERTS)
@@ -127,7 +134,7 @@ def prepare_grab_dataset(data_workdir, contacts_dir, object_splits, logger=None)
     subject_infos = {}
 
     for split_name in object_splits.keys():
-        outfname = makepath(os.path.join(data_workdir, split_name, 'o_delta.pt'), isfile=True)
+        outfname = makepath(os.path.join(data_workdir, split_name, 'delta_hand_mano.pt'), isfile=True)
 
         if os.path.exists(outfname):
             logger('Results for %s split already exist.'%(split_name))
@@ -138,7 +145,8 @@ def prepare_grab_dataset(data_workdir, contacts_dir, object_splits, logger=None)
 
         contact_fnames = glob.glob(os.path.join(contacts_dir, '*/*_stageII.pkl'))
 
-        out_data = {'o_delta':[], 's_delta':[], 'offset':[], 'poseHR':[], 's_verts':[]}
+        out_data = {'verts_hand_mano':[], 'verts_object':[], 'delta_object':[], 'delta_hand_mano':[], 'root_orient':[], 'pose_hand':[], 'trans':[], 'trans_object': [], 'root_orient_object':[]}
+        frame_names = []
         # contact_maps_fnames = []
         for contact_fname in contact_fnames:
             object_name = os.path.basename(contact_fname).split('_')[0]
@@ -151,12 +159,12 @@ def prepare_grab_dataset(data_workdir, contacts_dir, object_splits, logger=None)
             with open(data_c['object_mosh_file'], 'rb') as f: data_o = pickle.load(f, encoding='latin1')
 
             frame_mask = get_frame_contact_mask(data_c, data_o, include_joints, exclude_joints)
+            frame_mask[::FPS_DS_RATE] = False
+            
             T = frame_mask.sum()
-            if T<1:
-                logger('%s has no in contact frame.'%contact_fname)
-                continue
+            if T<1:continue
 
-            object_verts, _ = object_loader(object_name, data_c)
+            verts_object, _ = object_loader(object_name, data_c)
 
             if subject_name in subject_infos:
                 v_template_s = subject_infos[split_name]
@@ -165,69 +173,139 @@ def prepare_grab_dataset(data_workdir, contacts_dir, object_splits, logger=None)
                 subject_infos[split_name] = v_template_s
 
             bm = BodyModel(bm_path=data_s['shape_est_templatemodel'].replace('.pkl', '.npz'), batch_size=T, v_template=v_template_s)
-            om = ObjectModel(v_template=object_verts, batch_size=T)
+            bm_mano = BodyModel(bm_path=hand_model_path, batch_size=T)#, v_template=v_template_s[hand_vids])
+            om = ObjectModel(v_template=verts_object, batch_size=T)
 
             object_parms = {'trans':data_o['pose_est_trans'][frame_mask], 'root_orient':data_o['pose_est_poses'][frame_mask]}
 
             object_parms = {k: torch.from_numpy(v).type(torch.float32) for k, v in object_parms.items()}
 
-            o_verts = c2c(om(**object_parms).v)
-            offset = o_verts.mean(1)[:, None] # center both wrt to object
+            verts_object = c2c(om(**object_parms).v)
+            bps_offset = verts_object.mean(1)[:, None] # center both wrt to object
 
-            body_full_pose = data_s['pose_est_fullposes'][frame_mask]
-            body_params = {'root_orient': body_full_pose[:, :3],
-                           'pose_body': body_full_pose[:, 3:66],
-                           'pose_hand': body_full_pose[:, 75:],
+            body_fullpose = data_s['pose_est_fullposes'][frame_mask]
+            body_params = {'root_orient': body_fullpose[:, :3],
+                           'pose_body': body_fullpose[:, 3:66],
+                           'pose_hand': body_fullpose[:, 75:],
                            'trans': data_s['pose_est_trans'][frame_mask],
                            }
             body_params = {k: torch.from_numpy(v).type(torch.float32) for k, v in body_params.items()}
+            bm_eval = bm(**body_params)
+            # verts_hand_smplx = c2c(bm_eval.v[:,hand_vids])
 
-            s_verts = c2c(bm(**body_params).v[:,hand_vids])
+            ## get MANO hand params from smplx params
+            #######compute global orientation of the hand
+            fullpose = torch.from_numpy(body_fullpose).type(torch.float32)
+            matrots = batch_rodrigues(fullpose.view(-1, 3)).view(T, -1, 3, 3)
+            global_matrots = local2global_pose(matrots).view(T, 1, -1, 9)
+            local_aa = VPoser.matrot2aa(global_matrots)
+            rootorient_HR = local_aa[:, 0, 21]
+            ######################### compute mano hand
+            pose_HR = fullpose[:, 120:]
+            trans_HR = bm_eval.Jtr[:, 21] - mano_smplxhand_offset
+            bm_mano_eval = bm_mano(root_orient=rootorient_HR, pose_hand=pose_HR, trans=trans_HR)
+            verts_hand_mano = c2c(bm_mano_eval.v)
+            # ##########################
+            
+            # verts_object_hand_mano = np.concatenate([verts_object, verts_hand_mano], axis=1)
 
-            os_verts = np.concatenate([o_verts, s_verts], axis=1)
+            verts_object -= bps_offset
+            verts_hand_mano -= bps_offset
+            trans_HR = c2c(trans_HR) - bps_offset[:,0]
+            trans_OBJ = c2c(object_parms['trans']) - bps_offset[:,0]
+            rootorient_OBJ = c2c(object_parms['root_orient'])
 
-            o_verts -= offset
-            s_verts -= offset
-            os_verts -= offset
-
-            # basis_batched = torch.from_numpy(np.repeat(basis[None], repeats=T, axis=0).astype(np.float32))
-            # os_delta, o_delta, s_delta = [], [], []
-            # for tId in range(T):
-            #     os_delta.append(convert_to_bps(os_verts[tId]-offset[tId], basis, return_deltas=True)[1])
-            #     o_delta.append(convert_to_bps(o_verts[tId]-offset[tId], basis, return_deltas=True)[1])
-            #     s_delta.append(convert_to_bps(s_verts[tId]-offset[tId], basis, return_deltas=True)[1])
-            # os_delta, o_delta, s_delta = torch.cat(os_delta), torch.cat(o_delta), torch.cat(s_delta)
+            # verts_hand_smplx -= bps_offset
+            # verts_object_hand_mano -= bps_offset
 
             sys.path.append('/is/ps2/nghorbani/code-repos/basis_point_sets/chamfer-extension')
 
-            # _, os_delta = convert_to_bps_chamfer(os_verts, basis, return_deltas=True)
-            _, o_delta = convert_to_bps_chamfer(o_verts, basis, return_deltas=True)
-            _, s_delta = convert_to_bps_chamfer(s_verts, basis, return_deltas=True)
+            _, delta_object = convert_to_bps_chamfer(verts_object, basis, return_deltas=True)
+            _, delta_hand_mano = convert_to_bps_chamfer(verts_hand_mano, basis, return_deltas=True)
 
-            # out_data['os_delta'].append(os_delta)
-            out_data['s_verts'].append(s_verts)
-            out_data['o_delta'].append(o_delta)
-            out_data['s_delta'].append(s_delta)
-            out_data['offset'].append(offset)
-            out_data['poseHR'].append(body_full_pose[:, 120:])
+            out_data['verts_hand_mano'].append(verts_hand_mano)
+            out_data['verts_object'].append(verts_object[:,np.random.choice(verts_object.shape[1], 500, replace=False)])
+            out_data['delta_object'].append(delta_object)
+            out_data['delta_hand_mano'].append(delta_hand_mano)
+            out_data['root_orient'].append(rootorient_HR)
+            out_data['pose_hand'].append(pose_HR)
+            out_data['trans'].append(trans_HR)
+            out_data['trans_object'].append(trans_OBJ)
+            out_data['root_orient_object'].append(rootorient_OBJ)
 
-            if split_name != 'test':
-                # logger('Augmenting %s split'%split_name)
+            frame_names.extend(['%s_%s'%(contact_fname, fId) for fId in np.arange(len(data_o['pose_est_trans']))[frame_mask]])
+
+            # #################
+            # mv = MeshViewer(keepalive=False)
+            # id = 0
+            # obj_mesh = points_to_spheres(verts_object[id], radius=0.001, color=colors['blue'])
+            #
+            # bm_mano_eval = bm_mano(root_orient=rootorient_HR, pose_hand=pose_HR, trans=pose_HR.new(trans_HR))
+            # verts_hand_mano = c2c(bm_mano_eval.v)
+            #
+            # hand_mano_mesh = Mesh(verts_hand_mano[id], c2c(bm_mano_eval.f), vc=colors['red'])
+            # trans_HR_mesh = points_to_spheres(trans_HR[id:id+1]+ c2c(mano_smplxhand_offset), radius=0.01, color=colors['red'])
+            #
+            # mv.set_static_meshes([obj_mesh, hand_mano_mesh])
+            # print
+            # # mv.set_dynamic_meshes([])
+
+            # # ################################
+            if split_name == 'train':
+                # mv = MeshViewer(keepalive=False)
+                # id = 0
                 for _ in range(NUM_AUGMENTATION):
-                    rnd_rotation = np.random.random([os_verts.shape[0], 3])*360
-                    o_verts_rotated = rotateXYZ(o_verts, rnd_rotation)
-                    s_verts_rotated = rotateXYZ(s_verts, rnd_rotation)
+                    rotdeg_z = np.random.random([T])*360
+                    trans_HR_rotated, rotmat_z = rotateZ(trans_HR + c2c(mano_smplxhand_offset), rotdeg_z)
+                    trans_HR_rotated = trans_HR_rotated - c2c(mano_smplxhand_offset)
 
-                    _, o_delta = convert_to_bps_chamfer(o_verts_rotated, basis, return_deltas=True)
-                    _, s_delta = convert_to_bps_chamfer(s_verts_rotated, basis, return_deltas=True)
+                    trans_OBJ_rotated, _ = rotateZ(trans_OBJ , rotdeg_z)
 
-                    # out_data['os_delta'].append(os_delta)
-                    out_data['s_verts'].append(s_verts_rotated)
-                    out_data['o_delta'].append(o_delta)
-                    out_data['s_delta'].append(s_delta)
-                    out_data['offset'].append(offset)
-                    out_data['poseHR'].append(body_full_pose[:, 120:])
+                    verts_object_rotated, _ = rotateZ(verts_object, rotdeg_z)
+                    verts_hand_mano_rotated, _ = rotateZ(verts_hand_mano, rotdeg_z)
 
+                    ################# rotate root orient of hand
+
+                    rootorient_HR_matrot = VPoser.aa2matrot(rootorient_HR.view(T,1,-1,3)).view(T,3,3)#Nx1xnum_jointsx3
+                    rootorient_HR_matrot_rotated = torch.matmul(torch.from_numpy(rotmat_z.astype(np.float32)),rootorient_HR_matrot)
+                    rootorient_HR_rotated = VPoser.matrot2aa(rootorient_HR_matrot_rotated.view(T,1,-1,9)).view(T,3)
+
+                    _, delta_object_rotated = convert_to_bps_chamfer(verts_object_rotated, basis, return_deltas=True)
+                    _, delta_hand_mano_rotated = convert_to_bps_chamfer(verts_hand_mano_rotated, basis, return_deltas=True)
+
+
+                    ################ rotate root orient of object
+
+                    rootorient_OBJ_matrot = VPoser.aa2matrot(pose_HR.new(rootorient_OBJ).view(T,1,-1,3)).view(T,3,3)#Nx1xnum_jointsx3
+                    rootorient_OBJ_matrot_rotated = torch.matmul(torch.from_numpy(rotmat_z.astype(np.float32)),rootorient_OBJ_matrot)
+                    rootorient_OBJ_rotated = VPoser.matrot2aa(rootorient_OBJ_matrot_rotated.view(T,1,-1,9)).view(T,3)
+
+                    # bm_mano_eval_rotated = bm_mano(root_orient=rootorient_HR_rotated, pose_hand=pose_HR, trans=pose_HR.new(trans_HR_rotated))
+                    #
+                    # obj_mesh = points_to_spheres(verts_object[id], radius=0.001, color=colors['blue'])
+                    # hand_mano_mesh = Mesh(verts_hand_mano[id], c2c(bm_mano_eval.f), vc=colors['red'])
+                    # trans_HR_mesh = points_to_spheres(trans_HR[id:id+1]+ c2c(mano_smplxhand_offset), radius=0.01, color=colors['red'])
+                    # trans_HR_rotated_mesh = points_to_spheres(trans_HR_rotated[id:id+1]+ c2c(mano_smplxhand_offset), radius=0.01, color=colors['green'])
+                    #
+                    # obj_mesh_rotated = points_to_spheres(verts_object_rotated[id], radius=0.001, color=colors['blue'])
+                    # hand_mano_mesh_rotated = Mesh(verts_hand_mano_rotated[id], c2c(bm_mano_eval.f), vc=colors['red'])
+                    # hand_mano_mesh_rotated2 = Mesh(c2c(bm_mano_eval_rotated.v[id]), c2c(bm_mano_eval.f), vc=colors['green'])
+                    #
+                    # mv.set_static_meshes([obj_mesh, hand_mano_mesh, trans_HR_mesh])
+                    # mv.set_dynamic_meshes([obj_mesh_rotated, hand_mano_mesh_rotated, hand_mano_mesh_rotated2, trans_HR_rotated_mesh])
+                    # print()
+
+                    out_data['verts_hand_mano'].append(verts_hand_mano_rotated)
+                    out_data['verts_object'].append(verts_object_rotated[:, np.random.choice(verts_object.shape[1], 500, replace=False)])
+                    out_data['delta_object'].append(delta_object_rotated)
+                    out_data['delta_hand_mano'].append(delta_hand_mano_rotated)
+                    out_data['root_orient'].append(rootorient_HR_rotated)
+                    out_data['pose_hand'].append(pose_HR)
+                    out_data['trans'].append(trans_HR_rotated)
+                    out_data['trans_object'].append(trans_OBJ_rotated)
+                    out_data['root_orient_object'].append(rootorient_OBJ_rotated)
+
+                    frame_names.extend(['%s_rotated_%s' % (contact_fname, fId) for fId in np.arange(len(data_o['pose_est_trans']))[frame_mask]])
 
         for k,v in out_data.items():
 
@@ -236,7 +314,9 @@ def prepare_grab_dataset(data_workdir, contacts_dir, object_splits, logger=None)
             out_data[k] = torch.from_numpy(np.concatenate(v))
             torch.save(out_data[k], outfname)
 
-        logger('%d datapoints for %s'%(out_data['o_delta'].shape[0], split_name))
+        np.savez(os.path.join(data_workdir, split_name, 'frame_names.npz'), frame_names=frame_names)
+
+        logger('%d datapoints for %s'%(out_data['delta_object'].shape[0], split_name))
 
     with open(object_info_path, 'wb') as f:
         pickle.dump(object_loader.object_infos, f, protocol=2)
@@ -247,9 +327,12 @@ def prepare_grab_dataset(data_workdir, contacts_dir, object_splits, logger=None)
 
 if __name__ == '__main__':
 
-    msg = 'Add poseHR and s_verts for hand vertices\n'
-    msg = '1X  data augmentation\n'
-    msg = '\n'
+    msg = 'Replaced SMPLx hand with MANO hand in bps representation\n'
+    msg += 'Include mano hand right parameters\n'
+    msg += '2X data augmentation\n'
+    msg += '2X down sampling\n'
+    msg += 'Added frame information only.\n'
+    msg += '\n'
 
     contacts_dir = '/ps/scratch/body_hand_object_contact/contact_results/17/03_thrshld_50e_6_final'
     # contacts_dir = '/ps/scratch/body_hand_object_contact/contact_results/16_omid/02_thrshld_20e_6_final'
@@ -262,7 +345,7 @@ if __name__ == '__main__':
     }
     object_splits['train'] = list(set(object_names).difference(set(object_splits['test'] + object_splits['vald'])))
 
-    expr_code = 'V01_05_00'
+    expr_code = 'V01_07_00'
 
     data_workdir = os.path.join('/ps/scratch/body_hand_object_contact/grab_net/data', expr_code)
     logger = log2file(os.path.join(data_workdir, '%s.log' % (expr_code)))

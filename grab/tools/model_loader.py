@@ -56,7 +56,7 @@ def load_grab(expr_dir, grab_model='snapshot'):
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
 
-        grab_pt = getattr(module, 'BHOC')(**ps)
+        grab_pt = getattr(module, 'GRAB')(**ps)
     else:
         grab_pt = grab_model(**ps)
 
