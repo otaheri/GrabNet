@@ -5,8 +5,6 @@ from torch.utils.data import Dataset
 import glob
 import numpy as np
 
-from grab.tools.rotations import local2global_pose
-
 
 class GRAB_DS(Dataset):
     def __init__(self, dataset_dir, ):
@@ -59,52 +57,29 @@ if __name__ == '__main__':
 
     dataloader = DataLoader(ds, batch_size=batch_size, shuffle=True, num_workers=10, drop_last=False)
 
-    mv = MeshViewer(keepalive=False)
+    # mv = MeshViewer(keepalive=False)
     bps_basis = np.load(os.path.join(dataset_dir, '../bps_basis_1024.npz'))['basis']
     bm_path = '/ps/scratch/body_hand_object_contact/body_models/models/models_unchumpy/MANO_RIGHT.npz'
 
     bm = BodyModel(bm_path, batch_size=batch_size)
 
     for i_batch, dorig in enumerate(dataloader):
-        # print({k:v.type() for k,v in dorig.items()})
-        id = 0
-
-        dorig_cpu = {k:c2c(v)[id] for k, v in dorig.items()}
-
-        # print(dorig.keys())
-
-        o_orig_pc = reconstruct_from_bps(dorig_cpu['delta_object'][None], bps_basis)[0]
-        obj_mesh = points_to_spheres(o_orig_pc, radius=0.001, color=colors['blue'])
-        hand_mesh = Mesh(dorig_cpu['verts_hand_mano'], [], vc=colors['grey'])
-
-        bm_eval = bm(**dorig).v
-        bm_mesh = Mesh(c2c(bm_eval[id]), c2c(bm.f), vc=colors['red'])
-        print(ds.frame_names[dorig['idx']][id])
-
-        mv.set_static_meshes([obj_mesh, hand_mesh, bm_mesh])
-        time.sleep(2)
-
-        # reconstruct object using the o_delta
-        # visualize hand using the hand verts
-
+        # # print({k:v.type() for k,v in dorig.items()})
+        # id = 0
         #
-        # object_verts_dsampl_rec = reconstruct_from_bps(data['verts_dsampl_bps_deltas'].reshape(1,-1,3), ds.data_info['bps_basis'])[0]
-        # class_id_color = {k:v for k,v in enumerate(colors.values())}
+        # dorig_cpu = {k:c2c(v)[id] for k, v in dorig.items()}
         #
-        # obj_verts = data['verts_dsampl'].reshape(-1,3)
-        # obj_mesh1 = points_to_spheres(obj_verts, radius=0.001, color=class_id_color[0])
-        # mv.set_static_meshes([obj_mesh1])
-        # meshes = []
-        # for j in range(data['contact_maps'].max()):
-        #     if j == 0: continue
-        #     contact_verts = obj_verts[data['contact_maps'] == j]
-        #     if len(contact_verts):
-        #         obj_mesh2 = points_to_spheres(contact_verts, radius=0.001, color=class_id_color[j])
-        #         meshes.append(obj_mesh2)
+        # # print(dorig.keys())
         #
-        #         print('# contact for class %d = %d'%(j, (data['contact_maps'] == j).sum()))
-        # # obj_mesh2 = points_to_spheres(object_verts_dsampl_rec, radius=0.001, color=colors['blue'])
-        #
-        # mv.set_dynamic_meshes(meshes)
-        # mv.set_titlebar('%05d'%i_batch)
-        # time.sleep(5)
+        # o_orig_pc = reconstruct_from_bps(dorig_cpu['delta_object'][None], bps_basis)[0]
+        # obj_mesh = points_to_spheres(o_orig_pc, radius=0.001, color=colors['blue'])
+        # hand_mesh = Mesh(dorig_cpu['verts_hand_mano'], [], vc=colors['grey'])
+
+        # bm_eval = bm(**dorig).v
+        # bm_mesh = Mesh(c2c(bm_eval[id]), c2c(bm.f), vc=colors['red'])
+        # print(ds.frame_names[dorig['idx']][id])
+        print(ds.frame_names[dorig['idx']])
+
+        # mv.set_static_meshes([obj_mesh, hand_mesh, bm_mesh])
+        # time.sleep(2)
+

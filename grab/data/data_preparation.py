@@ -96,9 +96,9 @@ def load_object_verts(object_info_path, max_num_object_verts = 10000):
 
 def prepare_grab_dataset(data_workdir, contacts_dir, object_splits, logger=None):
     BPS_N_POINTS = 1024
-    FPS_DS_RATE = 2
+    FPS_DS_RATE = 1
     MAX_NUM_OBJECT_VERTS = 5000 # equal to the number of hand verts
-    NUM_AUGMENTATION = 2
+    NUM_AUGMENTATION = 1
 
     include_joints = list(range(41, 56))
     exclude_joints = list(range(26, 41))
@@ -159,7 +159,7 @@ def prepare_grab_dataset(data_workdir, contacts_dir, object_splits, logger=None)
             with open(data_c['object_mosh_file'], 'rb') as f: data_o = pickle.load(f, encoding='latin1')
 
             frame_mask = get_frame_contact_mask(data_c, data_o, include_joints, exclude_joints)
-            frame_mask[::FPS_DS_RATE] = False
+            # frame_mask[::FPS_DS_RATE] = False
             
             T = frame_mask.sum()
             if T<1:continue
@@ -251,61 +251,61 @@ def prepare_grab_dataset(data_workdir, contacts_dir, object_splits, logger=None)
             # # mv.set_dynamic_meshes([])
 
             # # ################################
-            if split_name == 'train':
-                # mv = MeshViewer(keepalive=False)
-                # id = 0
-                for _ in range(NUM_AUGMENTATION):
-                    rotdeg_z = np.random.random([T])*360
-                    trans_HR_rotated, rotmat_z = rotateZ(trans_HR + c2c(mano_smplxhand_offset), rotdeg_z)
-                    trans_HR_rotated = trans_HR_rotated - c2c(mano_smplxhand_offset)
-
-                    trans_OBJ_rotated, _ = rotateZ(trans_OBJ , rotdeg_z)
-
-                    verts_object_rotated, _ = rotateZ(verts_object, rotdeg_z)
-                    verts_hand_mano_rotated, _ = rotateZ(verts_hand_mano, rotdeg_z)
-
-                    ################# rotate root orient of hand
-
-                    rootorient_HR_matrot = VPoser.aa2matrot(rootorient_HR.view(T,1,-1,3)).view(T,3,3)#Nx1xnum_jointsx3
-                    rootorient_HR_matrot_rotated = torch.matmul(torch.from_numpy(rotmat_z.astype(np.float32)),rootorient_HR_matrot)
-                    rootorient_HR_rotated = VPoser.matrot2aa(rootorient_HR_matrot_rotated.view(T,1,-1,9)).view(T,3)
-
-                    _, delta_object_rotated = convert_to_bps_chamfer(verts_object_rotated, basis, return_deltas=True)
-                    _, delta_hand_mano_rotated = convert_to_bps_chamfer(verts_hand_mano_rotated, basis, return_deltas=True)
-
-
-                    ################ rotate root orient of object
-
-                    rootorient_OBJ_matrot = VPoser.aa2matrot(pose_HR.new(rootorient_OBJ).view(T,1,-1,3)).view(T,3,3)#Nx1xnum_jointsx3
-                    rootorient_OBJ_matrot_rotated = torch.matmul(torch.from_numpy(rotmat_z.astype(np.float32)),rootorient_OBJ_matrot)
-                    rootorient_OBJ_rotated = VPoser.matrot2aa(rootorient_OBJ_matrot_rotated.view(T,1,-1,9)).view(T,3)
-
-                    # bm_mano_eval_rotated = bm_mano(root_orient=rootorient_HR_rotated, pose_hand=pose_HR, trans=pose_HR.new(trans_HR_rotated))
-                    #
-                    # obj_mesh = points_to_spheres(verts_object[id], radius=0.001, color=colors['blue'])
-                    # hand_mano_mesh = Mesh(verts_hand_mano[id], c2c(bm_mano_eval.f), vc=colors['red'])
-                    # trans_HR_mesh = points_to_spheres(trans_HR[id:id+1]+ c2c(mano_smplxhand_offset), radius=0.01, color=colors['red'])
-                    # trans_HR_rotated_mesh = points_to_spheres(trans_HR_rotated[id:id+1]+ c2c(mano_smplxhand_offset), radius=0.01, color=colors['green'])
-                    #
-                    # obj_mesh_rotated = points_to_spheres(verts_object_rotated[id], radius=0.001, color=colors['blue'])
-                    # hand_mano_mesh_rotated = Mesh(verts_hand_mano_rotated[id], c2c(bm_mano_eval.f), vc=colors['red'])
-                    # hand_mano_mesh_rotated2 = Mesh(c2c(bm_mano_eval_rotated.v[id]), c2c(bm_mano_eval.f), vc=colors['green'])
-                    #
-                    # mv.set_static_meshes([obj_mesh, hand_mano_mesh, trans_HR_mesh])
-                    # mv.set_dynamic_meshes([obj_mesh_rotated, hand_mano_mesh_rotated, hand_mano_mesh_rotated2, trans_HR_rotated_mesh])
-                    # print()
-
-                    out_data['verts_hand_mano'].append(verts_hand_mano_rotated)
-                    out_data['verts_object'].append(verts_object_rotated[:, np.random.choice(verts_object.shape[1], 500, replace=False)])
-                    out_data['delta_object'].append(delta_object_rotated)
-                    out_data['delta_hand_mano'].append(delta_hand_mano_rotated)
-                    out_data['root_orient'].append(rootorient_HR_rotated)
-                    out_data['pose_hand'].append(pose_HR)
-                    out_data['trans'].append(trans_HR_rotated)
-                    out_data['trans_object'].append(trans_OBJ_rotated)
-                    out_data['root_orient_object'].append(rootorient_OBJ_rotated)
-
-                    frame_names.extend(['%s_rotated_%s' % (contact_fname, fId) for fId in np.arange(len(data_o['pose_est_trans']))[frame_mask]])
+            # if split_name == 'train':
+            #     # mv = MeshViewer(keepalive=False)
+            #     # id = 0
+            #     for _ in range(NUM_AUGMENTATION):
+            #         rotdeg_z = np.random.random([T])*360
+            #         trans_HR_rotated, rotmat_z = rotateZ(trans_HR + c2c(mano_smplxhand_offset), rotdeg_z)
+            #         trans_HR_rotated = trans_HR_rotated - c2c(mano_smplxhand_offset)
+            # 
+            #         trans_OBJ_rotated, _ = rotateZ(trans_OBJ , rotdeg_z)
+            # 
+            #         verts_object_rotated, _ = rotateZ(verts_object, rotdeg_z)
+            #         verts_hand_mano_rotated, _ = rotateZ(verts_hand_mano, rotdeg_z)
+            # 
+            #         ################# rotate root orient of hand
+            # 
+            #         rootorient_HR_matrot = VPoser.aa2matrot(rootorient_HR.view(T,1,-1,3)).view(T,3,3)#Nx1xnum_jointsx3
+            #         rootorient_HR_matrot_rotated = torch.matmul(torch.from_numpy(rotmat_z.astype(np.float32)),rootorient_HR_matrot)
+            #         rootorient_HR_rotated = VPoser.matrot2aa(rootorient_HR_matrot_rotated.view(T,1,-1,9)).view(T,3)
+            # 
+            #         _, delta_object_rotated = convert_to_bps_chamfer(verts_object_rotated, basis, return_deltas=True)
+            #         _, delta_hand_mano_rotated = convert_to_bps_chamfer(verts_hand_mano_rotated, basis, return_deltas=True)
+            # 
+            # 
+            #         ################ rotate root orient of object
+            # 
+            #         rootorient_OBJ_matrot = VPoser.aa2matrot(pose_HR.new(rootorient_OBJ).view(T,1,-1,3)).view(T,3,3)#Nx1xnum_jointsx3
+            #         rootorient_OBJ_matrot_rotated = torch.matmul(torch.from_numpy(rotmat_z.astype(np.float32)),rootorient_OBJ_matrot)
+            #         rootorient_OBJ_rotated = VPoser.matrot2aa(rootorient_OBJ_matrot_rotated.view(T,1,-1,9)).view(T,3)
+            # 
+            #         # bm_mano_eval_rotated = bm_mano(root_orient=rootorient_HR_rotated, pose_hand=pose_HR, trans=pose_HR.new(trans_HR_rotated))
+            #         #
+            #         # obj_mesh = points_to_spheres(verts_object[id], radius=0.001, color=colors['blue'])
+            #         # hand_mano_mesh = Mesh(verts_hand_mano[id], c2c(bm_mano_eval.f), vc=colors['red'])
+            #         # trans_HR_mesh = points_to_spheres(trans_HR[id:id+1]+ c2c(mano_smplxhand_offset), radius=0.01, color=colors['red'])
+            #         # trans_HR_rotated_mesh = points_to_spheres(trans_HR_rotated[id:id+1]+ c2c(mano_smplxhand_offset), radius=0.01, color=colors['green'])
+            #         #
+            #         # obj_mesh_rotated = points_to_spheres(verts_object_rotated[id], radius=0.001, color=colors['blue'])
+            #         # hand_mano_mesh_rotated = Mesh(verts_hand_mano_rotated[id], c2c(bm_mano_eval.f), vc=colors['red'])
+            #         # hand_mano_mesh_rotated2 = Mesh(c2c(bm_mano_eval_rotated.v[id]), c2c(bm_mano_eval.f), vc=colors['green'])
+            #         #
+            #         # mv.set_static_meshes([obj_mesh, hand_mano_mesh, trans_HR_mesh])
+            #         # mv.set_dynamic_meshes([obj_mesh_rotated, hand_mano_mesh_rotated, hand_mano_mesh_rotated2, trans_HR_rotated_mesh])
+            #         # print()
+            # 
+            #         out_data['verts_hand_mano'].append(verts_hand_mano_rotated)
+            #         out_data['verts_object'].append(verts_object_rotated[:, np.random.choice(verts_object.shape[1], 500, replace=False)])
+            #         out_data['delta_object'].append(delta_object_rotated)
+            #         out_data['delta_hand_mano'].append(delta_hand_mano_rotated)
+            #         out_data['root_orient'].append(rootorient_HR_rotated)
+            #         out_data['pose_hand'].append(pose_HR)
+            #         out_data['trans'].append(trans_HR_rotated)
+            #         out_data['trans_object'].append(trans_OBJ_rotated)
+            #         out_data['root_orient_object'].append(rootorient_OBJ_rotated)
+            # 
+            #         frame_names.extend(['%s_rotated_%s' % (contact_fname, fId) for fId in np.arange(len(data_o['pose_est_trans']))[frame_mask]])
 
         for k,v in out_data.items():
 
@@ -329,8 +329,8 @@ if __name__ == '__main__':
 
     msg = 'Replaced SMPLx hand with MANO hand in bps representation\n'
     msg += 'Include mano hand right parameters\n'
-    msg += '2X data augmentation\n'
-    msg += '2X down sampling\n'
+    msg += '1X data augmentation\n'
+    msg += '1X down sampling\n'
     msg += 'Added frame information only.\n'
     msg += '\n'
 
@@ -345,7 +345,7 @@ if __name__ == '__main__':
     }
     object_splits['train'] = list(set(object_names).difference(set(object_splits['test'] + object_splits['vald'])))
 
-    expr_code = 'V01_07_00'
+    expr_code = 'V01_11_00'
 
     data_workdir = os.path.join('/ps/scratch/body_hand_object_contact/grab_net/data', expr_code)
     logger = log2file(os.path.join(data_workdir, '%s.log' % (expr_code)))
@@ -356,3 +356,7 @@ if __name__ == '__main__':
     logger(msg)
 
     final_dsdir = prepare_grab_dataset(data_workdir, contacts_dir, object_splits, logger=logger)
+    
+    
+    
+    
