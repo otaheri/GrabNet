@@ -203,9 +203,9 @@ class GRABTrainer:
         # kwargs = {'num_workers': ps.n_workers, 'pin_memory': True} if use_cuda else {'num_workers': ps.n_workers}
         ds_train = GRAB_DS(dataset_dir=os.path.join(ps.dataset_dir, 'train'))
         self.ds_train = DataLoader(ds_train, batch_size=ps.batch_size, shuffle=True, drop_last=True, **kwargs)
-        ds_val = GRAB_DS(dataset_dir=os.path.join(ps.dataset_dir, 'train'))
+        ds_val = GRAB_DS(dataset_dir=os.path.join(ps.dataset_dir, 'vald'))
         self.ds_val = DataLoader(ds_val, batch_size=ps.batch_size, shuffle=True, drop_last=True, **kwargs)
-        ds_test = GRAB_DS(dataset_dir=os.path.join(ps.dataset_dir, 'train'))
+        ds_test = GRAB_DS(dataset_dir=os.path.join(ps.dataset_dir, 'test'))
         self.ds_test = DataLoader(ds_test, batch_size=ps.batch_size, shuffle=True, drop_last=False)
 
         logger('Dataset Train, Vald, Test size respectively: %.2f M, %.2f K, %.2f K' %
@@ -484,7 +484,7 @@ if __name__ == '__main__':
         'cuda_id': 1,
 
         'use_multigpu':False,
-        'latentD': 16,
+        'latentD': 64,
         'kl_coef': 5e-3,
 
         'in_features': 2048,
@@ -500,7 +500,7 @@ if __name__ == '__main__':
         'expr_code': expr_code,
         'work_dir': work_dir,
         'n_epochs': 10000,
-        'dataset_dir' : '/ps/scratch/body_hand_object_contact/grab_net/data/V01_07_00',
+        'dataset_dir' : '/ps/scratch/body_hand_object_contact/grab_net/data/V01_11_00',
     }
 
     grab_trainer = GRABTrainer(work_dir, ps=Configer(default_ps_fname=default_ps_fname, **params))
@@ -514,7 +514,7 @@ if __name__ == '__main__':
     msg += 'Using no data augmentation.\n'
     msg += 'Reconstruction loss L1 on modeule created mesh vertices and hand parameters.\n'
     msg += 'Added object vertices for visualization only.\n'
-    msg += 'Lowered latendD from 128 to 32\n'
+    msg += 'Lowered latendD from 128 to 64\n'
     msg += '\n'
 
     grab_trainer.logger(msg)

@@ -32,7 +32,7 @@ from grab.train.grab_net import GRABTrainer
 
 from human_body_prior.tools.omni_tools import makepath
 from human_body_prior.tools.omni_tools import copy2cpu as c2c
-from human_body_prior.body_model.body_model import BodyModel
+
 from human_body_prior.body_model.body_model import BodyModel
 
 from torch.utils.data import DataLoader
@@ -67,20 +67,62 @@ def visualize_results(dataset_dir, grab_model, gb_ps, batch_size=5, save_upto_bn
         if bId> save_upto_bnum: break
 
 
+def evaluate_error(dataset_dir, grab_model, gb_ps, batch_size=512):
+    grab_model.eval()
+
+    ds_name = dataset_dir.split('/')[-1]
+
+    comp_device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    bm = BodyModel(gb_ps.bm_path, batch_size=batch_size).to(comp_device)
+    grab_model = grab_model.to(comp_device)
+
+    final_errors = {}
+    for splitname in ['test', 'train', 'vald']:
+
+        ds = GRAB_DS(dataset_dir=os.path.join(dataset_dir, splitname))
+        # print('%s dataset size: %s'%(splitname,len(ds)))
+        ds = DataLoader(ds, batch_size=batch_size, shuffle=False, drop_last=True)#batchsize for bm is fixed so drop the last one
+
+        loss_mean = []
+        with torch.no_grad():
+            for dorig in ds:
+                dorig = {k: dorig[k].to(comp_device) for k in dorig.keys()}
+
+                MESH_SCALER = 1000
+
+                drec = grab_model(**dorig)
+                verts_hand_mano = bm(**drec).v
+
+                # from psbody.mesh import Mesh
+                # a = Mesh(c2c(verts_hand_mano[0]), c2c(bm.f))
+                # b = Mesh(c2c(dorig['verts_hand_mano'][0]), c2c(bm.f))
+                # a.concatenate_mesh(b).show()
+
+                # loss_mean.append(torch.mean(torch.sqrt(torch.pow((mesh_orig - mesh_rec)* MESH_SCALER, 2))))
+                loss_mean.append(torch.mean(torch.abs(dorig['verts_hand_mano'] - verts_hand_mano)* MESH_SCALER))
+
+        final_errors[splitname] = {'v2v_mae': float(c2c(torch.stack(loss_mean).mean()))}
+
+    outpath = makepath(os.path.join(gb_ps.work_dir, 'evaluations', 'ds_%s'%ds_name, os.path.basename(gb_ps.best_model_fname).replace('.pt','.json')), isfile=True)
+    with open(outpath, 'w') as f:
+        json.dump(final_errors,f)
+
+    return final_errors
+
 if __name__ == '__main__':
-    expr_code = 'V03_07_05'
-    data_code = 'V01_06_00'
+    expr_code = 'V03_07_04'
+    data_code = 'V01_07_00'
 
     expr_basedir = '/ps/scratch/body_hand_object_contact/grab_net/experiments'
-    expr_dir = os.path.join(expr_basedir, expr_code)
 
+    expr_dir = os.path.join(expr_basedir, expr_code)
     grab_model, gb_ps = load_grab(expr_dir)
     # dataset_dir = gb_ps.dataset_dir
     dataset_dir = '/ps/scratch/body_hand_object_contact/grab_net/data/%s'%data_code
 
-    for splitname in ['test', 'vald', 'train']:
-       visualize_results(os.path.join(dataset_dir, splitname), grab_model, gb_ps, batch_size=3)
+    # for splitname in ['test', 'vald', 'train']:
+    #    visualize_results(os.path.join(dataset_dir, splitname), grab_model, gb_ps, batch_size=3)
 
-    # final_errors = evaluate_error(dataset_dir, grab_model, gb_ps, batch_size=512)
-    # print('[%s] [DS: %s] -- %s' % (gb_ps.best_model_fname, dataset_dir,  ', '.join(['%s: %.2e'%(k, v['v2v_mae']) for k,v in final_errors.items()])))
-
+    final_errors = evaluate_error(dataset_dir, grab_model, gb_ps, batch_size=512)
+    print('[%s] [DS: %s] -- %s' % (gb_ps.best_model_fname, dataset_dir,  ', '.join(['%s: %.2e'%(k, v['v2v_mae']) for k,v in final_errors.items()])))
