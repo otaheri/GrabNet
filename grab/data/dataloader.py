@@ -50,36 +50,42 @@ if __name__ == '__main__':
     from human_body_prior.train.vposer_smpl import VPoser#matrot2aa
     import time
     batch_size = 256
-    dataset_dir = '/ps/scratch/body_hand_object_contact/grab_net/data/V01_07_00/train'
+    dataset_dir = '/ps/scratch/body_hand_object_contact/grab_net/data/V01_11_00/test'
+    # dataset_dir = '/ps/scratch/body_hand_object_contact/grab_net/data/V01_07_00/train'
 
     ds = GRAB_DS(dataset_dir=dataset_dir)
     print('dataset size: %d'%len(ds))
 
     dataloader = DataLoader(ds, batch_size=batch_size, shuffle=True, num_workers=10, drop_last=False)
 
-    # mv = MeshViewer(keepalive=False)
+    mv = MeshViewer(keepalive=False)
     bps_basis = np.load(os.path.join(dataset_dir, '../bps_basis_1024.npz'))['basis']
     bm_path = '/ps/scratch/body_hand_object_contact/body_models/models/models_unchumpy/MANO_RIGHT.npz'
 
     bm = BodyModel(bm_path, batch_size=batch_size)
 
     for i_batch, dorig in enumerate(dataloader):
-        # # print({k:v.type() for k,v in dorig.items()})
-        # id = 0
-        #
-        # dorig_cpu = {k:c2c(v)[id] for k, v in dorig.items()}
-        #
-        # # print(dorig.keys())
-        #
-        # o_orig_pc = reconstruct_from_bps(dorig_cpu['delta_object'][None], bps_basis)[0]
-        # obj_mesh = points_to_spheres(o_orig_pc, radius=0.001, color=colors['blue'])
-        # hand_mesh = Mesh(dorig_cpu['verts_hand_mano'], [], vc=colors['grey'])
+        # print({k:v.type() for k,v in dorig.items()})
+        found_one = False
+        for id in range(batch_size):
+            if 'fryingpan' in ds.frame_names[dorig['idx']][id]:
+                found_one = True
+                break
+        if not found_one: continue
 
-        # bm_eval = bm(**dorig).v
-        # bm_mesh = Mesh(c2c(bm_eval[id]), c2c(bm.f), vc=colors['red'])
-        # print(ds.frame_names[dorig['idx']][id])
+        dorig_cpu = {k:c2c(v)[id] for k, v in dorig.items()}
+
+        # print(dorig.keys())
+
+        o_orig_pc = reconstruct_from_bps(dorig_cpu['delta_object'][None], bps_basis)[0]
+        obj_mesh = points_to_spheres(o_orig_pc, radius=0.001, color=colors['blue'])
+        hand_mesh = Mesh(dorig_cpu['verts_hand_mano'], [], vc=colors['grey'])
+
+        bm_eval = bm(**dorig).v
+        bm_mesh = Mesh(c2c(bm_eval[id]), c2c(bm.f), vc=colors['red'])
+        print(ds.frame_names[dorig['idx']][id])
         print(ds.frame_names[dorig['idx']])
 
-        # mv.set_static_meshes([obj_mesh, hand_mesh, bm_mesh])
-        # time.sleep(2)
+        mv.set_static_meshes([obj_mesh, hand_mesh, bm_mesh])
+        time.sleep(2)
 

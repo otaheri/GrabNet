@@ -28,6 +28,14 @@ import pickle
 from grab.data.data_preparation import get_object_names
 
 def eval_varying_cond_constant_z_different_view(dataset_dir, grab_model, gb_ps, samples_per_object=5):
+    '''
+
+    :param dataset_dir:
+    :param grab_model:
+    :param gb_ps:
+    :param samples_per_object:
+    :return:
+    '''
 
     contacts_dir = '/ps/scratch/body_hand_object_contact/contact_results/17/03_thrshld_50e_6_final'
     object_names = get_object_names(contacts_dir)
@@ -276,17 +284,30 @@ def eval_constant_cond_varying_z_same_view(dataset_dir, grab_model, gb_ps, batch
 
 if __name__ == '__main__':
     # expr_code = 'V03_07_04' # Xube
-    expr_code = 'V03_08_02_64D'
-    data_code = 'V01_07_00'
+    # expr_code = 'V03_07_08_64D'#
+    expr_code = 'V03_07_04_TR03' # CVPR
+    # expr_code = 'V03_07_04_TR05' #
+    # expr_code = 'V03_07_04_TR07' #
+    # expr_code = 'V03_07_04_TR03' # good one
+
+    # expr_code = 'V03_07_10_128D' # not bad
+    # expr_code = 'V03_07_09_64D' # no good finger poses but fails with the frying pan
+    # expr_code = 'V03_07_14_64D' # 10 perce drop using only pick up data. the wine glass pickup does not touch the glass
+
+    # expr_code = 'V03_07_13_64D' # 20 perce drop with 01_12 dataset. the wine g
+    data_code = 'V01_11_00'
+    # data_code = 'V01_12_00'
+    # data_code = 'V01_07_00'
 
     expr_basedir = '/ps/scratch/body_hand_object_contact/grab_net/experiments'
-    expr_dir = os.path.join(expr_basedir, expr_code)
     dataset_dir = '/ps/scratch/body_hand_object_contact/grab_net/data/%s' % (data_code)
 
+    # for expr_code in ['V03_07_08_64D', 'V03_07_07_32D', 'V03_07_07_64D' ]:
+    expr_dir = os.path.join(expr_basedir, expr_code)
     grab_model, gb_ps = load_grab(expr_dir)
 
     # for splitname in ['test', ]:
     for splitname in ['test', 'vald', 'train']:
         eval_varying_cond_constant_z_different_view(os.path.join(dataset_dir, splitname), grab_model, gb_ps, samples_per_object=10)
-        eval_varying_cond_varying_z_different_view(os.path.join(dataset_dir, splitname), grab_model, gb_ps, samples_per_object=10)
+        eval_varying_cond_varying_z_different_view(os.path.join(dataset_dir, splitname), grab_model, gb_ps, samples_per_object=12)
         eval_constant_cond_varying_z_same_view(os.path.join(dataset_dir, splitname), grab_model, gb_ps, batch_size=5, dump_obj=True)

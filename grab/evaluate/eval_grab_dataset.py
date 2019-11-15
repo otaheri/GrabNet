@@ -52,7 +52,7 @@ def visualize_results(dataset_dir, grab_model, gb_ps, batch_size=5, save_upto_bn
     with torch.no_grad():
         bm = BodyModel(gb_ps.bm_path, batch_size=batch_size).to(comp_device)
 
-    ds = GRAB_DS(dataset_dir=os.path.join(dataset_dir, splitname))
+    ds = GRAB_DS(dataset_dir=dataset_dir)
     ds = DataLoader(ds, batch_size=batch_size, shuffle=True, drop_last=False)
 
     outpath = os.path.join(gb_ps.work_dir, 'evaluations', 'ds_%s'%ds_name, os.path.basename(gb_ps.best_model_fname).replace('.pt',''), 'eval_on_grab','%s_samples'%splitname)
@@ -111,18 +111,18 @@ def evaluate_error(dataset_dir, grab_model, gb_ps, batch_size=512):
     return final_errors
 
 if __name__ == '__main__':
-    expr_code = 'V03_07_04'
-    data_code = 'V01_07_00'
+    expr_code = 'V03_07_04_TR03'
+    data_code = 'V01_11_00'
 
     expr_basedir = '/ps/scratch/body_hand_object_contact/grab_net/experiments'
+    for expr_code in ['V03_07_08_64D', 'V03_07_04_TR03']:
+        expr_dir = os.path.join(expr_basedir, expr_code)
+        grab_model, gb_ps = load_grab(expr_dir)
+        # dataset_dir = gb_ps.dataset_dir
+        dataset_dir = '/ps/scratch/body_hand_object_contact/grab_net/data/%s'%data_code
 
-    expr_dir = os.path.join(expr_basedir, expr_code)
-    grab_model, gb_ps = load_grab(expr_dir)
-    # dataset_dir = gb_ps.dataset_dir
-    dataset_dir = '/ps/scratch/body_hand_object_contact/grab_net/data/%s'%data_code
+        for splitname in ['test', 'vald', 'train']:
+           visualize_results(os.path.join(dataset_dir, splitname), grab_model, gb_ps, batch_size=3)
 
-    # for splitname in ['test', 'vald', 'train']:
-    #    visualize_results(os.path.join(dataset_dir, splitname), grab_model, gb_ps, batch_size=3)
-
-    final_errors = evaluate_error(dataset_dir, grab_model, gb_ps, batch_size=512)
-    print('[%s] [DS: %s] -- %s' % (gb_ps.best_model_fname, dataset_dir,  ', '.join(['%s: %.2e'%(k, v['v2v_mae']) for k,v in final_errors.items()])))
+        final_errors = evaluate_error(dataset_dir, grab_model, gb_ps, batch_size=512)
+        print('[%s] [DS: %s] -- %s' % (gb_ps.best_model_fname, dataset_dir,  ', '.join(['%s: %.2e'%(k, v['v2v_mae']) for k,v in final_errors.items()])))

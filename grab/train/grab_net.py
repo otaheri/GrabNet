@@ -469,7 +469,7 @@ class GRABTrainer:
 
 if __name__ == '__main__':
 
-    expr_code = 'V03_07_07'
+    expr_code = 'V03_07_04_TR03'
 
     default_ps_fname = 'grab_defaults.ini'
 

@@ -152,7 +152,8 @@ def prepare_grab_dataset(data_workdir, contacts_dir, object_splits, logger=None)
             object_name = os.path.basename(contact_fname).split('_')[0]
             if object_name not in object_splits[split_name]: continue
             subject_name = contact_fname.split('/')[-2]
-            # action_name = '_'.join(os.path.basename(contact_fname).split('_')[1:-1])
+            action_name = '_'.join(os.path.basename(contact_fname).split('_')[1:-1])
+            # if 'pick_all' not in action_name: continue
             # action_names.append(action_name)
             with open(contact_fname, 'rb') as f: data_c = pickle.load(f, encoding='latin1')
             with open(data_c['subject_mosh_file'], 'rb') as f: data_s = pickle.load(f, encoding='latin1')
@@ -331,12 +332,11 @@ if __name__ == '__main__':
     msg += 'Include mano hand right parameters\n'
     msg += '1X data augmentation\n'
     msg += '1X down sampling\n'
-    msg += 'Added frame information only.\n'
+    msg += 'Added frame information.\n'
+    msg += 'Using the final dataset\n'
     msg += '\n'
 
     contacts_dir = '/ps/scratch/body_hand_object_contact/contact_results/17/03_thrshld_50e_6_final'
-    # contacts_dir = '/ps/scratch/body_hand_object_contact/contact_results/16_omid/02_thrshld_20e_6_final'
-    # contacts_dir = '/ps/scratch/body_hand_object_contact/contact_results/16_01_thrshld_15e_6_final'
     object_names = get_object_names(contacts_dir)
 
     object_splits = {
@@ -345,7 +345,7 @@ if __name__ == '__main__':
     }
     object_splits['train'] = list(set(object_names).difference(set(object_splits['test'] + object_splits['vald'])))
 
-    expr_code = 'V01_11_00'
+    expr_code = 'V01_13_00'
 
     data_workdir = os.path.join('/ps/scratch/body_hand_object_contact/grab_net/data', expr_code)
     logger = log2file(os.path.join(data_workdir, '%s.log' % (expr_code)))
