@@ -25,9 +25,9 @@ Below you can see some generated results from GrabNet:
 
 Check out the YouTube videos below for more details.
 
-| Short Video | Long Video |
+| Long Video | Short Video |
 | :---: | :---: |
-|  [![ShortVideo](images/short.png)](https://youtu.be/VHN0DBUB4H8) | [![LongVideo](images/long.png)](https://youtu.be/s5syYMxmNHA) | 
+|  [![LongVideo](images/long.png)](https://youtu.be/s5syYMxmNHA) | [![ShortVideo](images/short.png)](https://youtu.be/VHN0DBUB4H8) |  
 
 
 ## Table of Contents
