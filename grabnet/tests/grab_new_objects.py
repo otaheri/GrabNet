@@ -151,7 +151,7 @@ if __name__ == '__main__':
     rhm_path = args.rhm_path
 
     cwd = os.getcwd()
-    work_dir = cwd
+    work_dir = cwd + '/test'
 
     best_cnet = 'grabnet/models/coarsenet.pt'
     best_rnet = 'grabnet/models/refinenet.pt'
@@ -180,49 +180,5 @@ if __name__ == '__main__':
     if cfg.best_rnet is None:
         cfg['best_rnet'] = best_rnet
 
-##########################################
-    # expr_code = 'V00_release'
-    #
-    # cwd = os.getcwd()
-    # default_cfg_path = cwd + '/grabnet/configs/grabnet_cfg.yaml'
-    #
-    # base_dir = '/is/ps2/otaheri/grab_net/experiments/GrabNet_release'
-    #
-    # work_dir = os.path.join(base_dir, expr_code)
-    #
-    # processed_data_path = '/ps/scratch/grab/contact_results/omid_46/GrabNet/data'
-    # obj_path = '/ps/scratch/grab/data/object_meshes/contact_meshes/mug.ply'
-    #
-    # cfg = {
-    #     'n_neurons': 512,
-    #     'batch_size': 256,
-    #     'n_workers': 10,
-    #     'cuda_id': 0,
-    #
-    #     'use_multigpu': False,
-    #     'latentD': 16,
-    #     'kl_coef': 5e-3,
-    #
-    #     'in_features': 4096,
-    #
-    #     'rhm_path': '/ps/scratch/grab/body_models/models/mano/MANO_RIGHT.pkl',
-    #     'vpe_path': cwd + '/grabnet/configs/verts_per_edge.npy',
-    #     'c_weights_path': cwd + '/grabnet/configs/rhand_weight.npy',
-    #
-    #     'reg_coef': 5e-4,
-    #     'base_lr': 5e-4,
-    #
-    #     'best_cnet': '/is/ps2/otaheri/grab_net/experiments/GrabNet_release/V00_release/snapshots/cnet_from_old.pt',
-    #     'best_rnet': '/is/ps2/otaheri/grab_net/experiments/GrabNet_release/V00_release/snapshots/rnet_from_old.pt',
-    #     'log_every_epoch': 2,
-    #     'expr_code': expr_code,
-    #     'work_dir': work_dir,
-    #     'n_epochs': 500,
-    #     'dataset_dir': processed_data_path,
-    #     'load_on_ram': True
-    # }
-    #
-    # cfg = Config(default_cfg_path=default_cfg_path, **cfg)
-#################################################
     grabnet = Trainer(cfg=cfg, inference=True)
     grab_new_objs(grabnet,obj_path)
