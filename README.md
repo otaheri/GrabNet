@@ -62,10 +62,10 @@ Inorder to use GrabNet model please follow the below steps:
     │    └── obj_info.npy
     │    └── sbj_info.npy
     │    │
-    │    └── split_name from (test, train, val)
+    │    └── [split_name] from (test, train, val)
     │          │
     │          └── frame_names.npz
-    │          └── grabnet_*.npz
+    │          └── grabnet_[split_name].npz
     │          └── data
     │                └── s1
     │                └── ...
