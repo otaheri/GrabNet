@@ -54,7 +54,8 @@ This implementation:
 ## Getting started
 Inorder to use the GrabNet model please follow the below steps:
 
-- Download the GrabNet dataset from [this website](http://grab.is.tue.mpg.de) and put it in the following structure:
+- Download the GrabNet dataset (ZIP files) from [this website](http://grab.is.tue.mpg.de). Please do NOT unzip the files yet.
+- Organize the ZIP files in the following folder structure. Our [script](http://comming.soon) can help you automate this.
 ```bash
     GRAB
     ├── data
@@ -76,9 +77,10 @@ Inorder to use the GrabNet model please follow the below steps:
          ├── object_meshes
          └── subject_meshes
 ```
-- Download the GrabNet models from the [paper](https://grab.is.tue.mpg.de) and put the models folder in the cloned repository.
-- Go to the [MANO website](https://mano.is.tue.mpg.de) to download MANO models (skip this part if you already followed this for GRAB dataset).
-- Follow the instalation steps for this repo in the next section.
+- Unzip each ZIP file in the same location of the above folder structure.
+- Download the GrabNet models from the [GRAB website](https://grab.is.tue.mpg.de), and move the model files in the folder described in the above folder structure.
+- Download MANO models from the [MANO website](https://mano.is.tue.mpg.de) (skip this part if you already followed this for [GRAB dataset](https://github.com/otaheri/GRAB)).
+- Follow the installation steps for this repo in the next section.
 
 
 ## Requirements
@@ -112,7 +114,7 @@ After installing the *GrabNet* package, dependencies, and downloading the data a
  mano website, you should be able to run the following examples:
 
 
-- #### Generate several grasps for new objects
+- #### Generate several grasps for new unseen objects
     
     ```Shell
     python grabnet/tests/grabnew_objects.py --obj-path $NEW_OBJECT_PATH \
@@ -120,7 +122,7 @@ After installing the *GrabNet* package, dependencies, and downloading the data a
                                             --data_path $PATH_TO_GRABNET_DATA
     ```
 
-- #### Generate grasps for test data and compare to GT
+- #### Generate grasps for test data and compare to ground truth (GT)
     
     ```Shell
     python grabnet/tests/test.py     --rhm-path $MANO_MODEL_FOLDER \
@@ -129,7 +131,7 @@ After installing the *GrabNet* package, dependencies, and downloading the data a
 
 - #### Train GrabNet with new configurations 
     
-    To retrain GrabNet with new configuration, please use the following code.
+    To retrain GrabNet with a new configuration, please use the following code.
     
     ```Shell
     python train.py  --work-dir $SAVING_PATH \
@@ -175,11 +177,14 @@ this agreement will automatically terminate your rights under this [License](./L
 
 Special thanks to [Mason Landry](https://github.com/soubhiksanyal) for his invaluable help with this project.
 
-We thank S. Polikovsky, M. Hoschle (MH) and M. Landry (ML)
-for the MoCap facility. We thank F. Mattioni, D. Hieber, and A. Valis for MoCap
-cleaning. We thank ML and T. Alexiadis for trial coordination, MH and F. Grimminger
-for 3D printing, V. Callaghan for voice recordings, J. Tesch for renderings, and Benjamin Pellkofer for the IT support. 
-We thank Sai Kumar Dwivedi and Nikos Athanasiou for proofreading.
+We thank:
+* Senya Polikovsky, Markus Hoschle (MH) and Mason Landry (ML) for the MoCap facility. 
+* Felipe Mattioni, David Hieber, and Alex Valis for MoCap cleaning. 
+* ML and Tsvetelina Alexiadis for trial coordination, and MH and Felix Grimminger for 3D printing, 
+* ML and Valerie Callaghan for voice recordings, Joachim Tesch for renderings. 
+* Jonathan Williams for the website design, and Benjamin Pellkofer for the IT and web support. 
+* Sai Kumar Dwivedi and Nikos Athanasiou for proofreading.
+
 ## Contact
 The code of this repository was implemented by [Omid Taheri](https://ps.is.tuebingen.mpg.de/person/otaheri) and [Nima Ghorbani](https://ps.is.tuebingen.mpg.de/person/nghorbani).
 
