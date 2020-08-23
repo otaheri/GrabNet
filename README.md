@@ -1,7 +1,7 @@
 # GrabNet
 Generating realistic hand mesh grasping unseen 3D objects (ECCV 2020)
 
-# Stay tuned, coming Soon ...
+# Coming Soon ...
 
 [![report](https://img.shields.io/badge/arxiv-report-red)](https://grab.is.tue.mpg.de)
 
@@ -16,9 +16,9 @@ For more details please refer to the [Paper](https://ps.is.mpg.de/publications/g
 
 Below you can see some generated results from GrabNet:
 
-| Bioculars | Mug |Camera | Toothpaste|
+| Binoculars | Mug |Camera | Toothpaste|
 | :---: | :---: |:---: | :---: |
-| ![GRAB-Teaser](images/binoculars.gif)|![GRAB-Teaser](images/mug.gif)|![GRAB-Teaser](images/camera.gif)|![GRAB-Teaser](images/toothpaste.gif)|
+| ![Binoculars](images/binoculars.gif)|![Mug](images/mug.gif)|![Camera](images/camera.gif)|![Toothpaste](images/toothpaste.gif)|
 
 
 
@@ -70,7 +70,6 @@ Inorder to use GrabNet model please follow the below steps:
     │                └── s1
     │                └── ...
     │                └── s10
-    │
     └── tools
          │
          ├── object_meshes
@@ -80,9 +79,8 @@ Inorder to use GrabNet model please follow the below steps:
 - Go to the [MANO website](https://mano.is.tue.mpg.de) to download MANO models (skip this part if you already followed this for GRAB dataset).
 - Follow the instalation steps for this repo in the next section.
 
-## Installation
 
-##### Requirements
+## Requirements
 This package has the following requirements:
 
 * [Pytorch>=1.1.0](https://pytorch.org/get-started/locally/) 
@@ -92,18 +90,19 @@ This package has the following requirements:
 * [meshviewer](https://github.com/MPI-IS/mesh) (for visualization)
 * [bps_torch](https://github.com/otaheri/bps_torch) 
 
+## Installation
 
 To install the dependencies please follow the next steps:
 
-1.Clone this repository and install the requirements: 
-```Shell
-git clone https://github.com/otaheri/GrabNet
-```
-2.Install the dependencies by the following command:
-```
-pip install -r requirements.txt
-```
-3.Install the meshviewer from [this repo](https://github.com/MPI-IS/mesh)
+- Clone this repository and install the requirements: 
+    ```Shell
+    git clone https://github.com/otaheri/GrabNet
+    ```
+- Install the dependencies by the following command:
+    ```
+    pip install -r requirements.txt
+    ```
+- Install the meshviewer from [this repo](https://github.com/MPI-IS/mesh)
 
 
 ## Examples
