@@ -1,5 +1,5 @@
 # GrabNet
-Generating realistic hand mesh grasping unseen 3D objects (ECCV 2020)
+### Generating realistic hand mesh grasping unseen 3D objects (ECCV 2020)
 
 
 [![report](https://img.shields.io/badge/arxiv-report-red)](https://grab.is.tue.mpg.de)
@@ -54,7 +54,18 @@ This implementation:
 Inorder to use the GrabNet model please follow the below steps:
 
 - Download the GrabNet dataset (ZIP files) from [this website](http://grab.is.tue.mpg.de). Please do NOT unzip the files yet.
-- Organize the ZIP files in the following folder structure. Our [script](http://comming.soon) can help you automate this.
+- Put all the downloaded ZIP files for GrabNet in a folder.
+- Clone this repository and install the requirements: 
+    ```Shell
+    git clone https://github.com/otaheri/GrabNet
+    ```
+- Run the following command to extract the ZIP files.
+
+    ```Shell
+    python grabnet/data/unzip_data.py   --data-path $PATH_TO_FOLDER_WITH_ZIP_FILES \
+                                        --ectract-path $PATH_TO_EXTRACT_DATASET_TO
+    ```
+- The extracted data should be in the following structure.
 ```bash
     GRAB
     ├── data
@@ -76,8 +87,18 @@ Inorder to use the GrabNet model please follow the below steps:
          ├── object_meshes
          └── subject_meshes
 ```
-- Unzip each ZIP file in the same location of the above folder structure.
-- Download the GrabNet models from the [GRAB website](https://grab.is.tue.mpg.de), and move the model files in the folder described in the above folder structure.
+
+- Download the GrabNet models from the [GRAB website](https://grab.is.tue.mpg.de), and move the model files to the models folder as described below.
+```bash
+    GrabNet
+        ├── grabnet
+        │    │
+        │    ├── models
+        │    │     └── coarsenet.pt
+        │    │     └── refinenet.pt
+        │    │     │
+```
+
 - Download MANO models from the [MANO website](https://mano.is.tue.mpg.de) (skip this part if you already followed this for [GRAB dataset](https://github.com/otaheri/GRAB)).
 - Follow the installation steps for this repo in the next section.
 
