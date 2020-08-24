@@ -175,7 +175,7 @@ this agreement will automatically terminate your rights under this [License](./L
 
 ## Acknowledgments
 
-Special thanks to [Mason Landry](https://github.com/soubhiksanyal) for his invaluable help with this project.
+Special thanks to [Mason Landry](https://ps.is.tuebingen.mpg.de/person/mlandry) for his invaluable help with this project.
 
 We thank:
 * Senya Polikovsky, Markus Hoschle (MH) and Mason Landry (ML) for the MoCap facility. 
