@@ -1,7 +1,6 @@
 # GrabNet
 Generating realistic hand mesh grasping unseen 3D objects (ECCV 2020)
 
-# Coming Soon ...
 
 [![report](https://img.shields.io/badge/arxiv-report-red)](https://grab.is.tue.mpg.de)
 
@@ -13,7 +12,7 @@ Generating realistic hand mesh grasping unseen 3D objects (ECCV 2020)
 [GrabNet](http://grab.is.tue.mpg.de) is a generative model for 3D hand grasps. Given a 3D object mesh, GrabNet 
 can predict several hand grasps for it. GrabNet has two succesive models, CoarseNet (cVAE) and RefineNet.
 It is trained on a subset (right hand and object only) of [GRAB](http://grab.is.tue.mpg.de) dataset.
-For more details please refer to the [Paper](https://www.ecva.net/papers/eccv_2020/papers_ECCV/papers/123490562.pdf) or the [project website](http://grab.is.tue.mpg.de).
+For more details please refer to the [Paper](http://grab.is.tue.mpg.de//uploads/ckeditor/attachments/363/grab_eccv2020.pdf) or the [project website](http://grab.is.tue.mpg.de).
 
 Below you can see some generated results from GrabNet:
 
