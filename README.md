@@ -182,7 +182,7 @@ After installing the *GrabNet* package, dependencies, and downloading the data a
 
 ## License
 Software Copyright License for **non-commercial scientific research purposes**.
-Please read carefully the following [terms and conditions](https://github.com/otaheri/GRAB/blob/master/LICENSE) and any accompanying documentation
+Please read carefully the terms and conditions in the [LICENSE file](https://github.com/otaheri/GRAB/blob/master/LICENSE) and any accompanying documentation
 before you download and/or use the GRAB data, model and software, (the "Data & Software"),
 including 3D meshes (body and objects), images, videos, textures, software, scripts, and animations.
 By downloading and/or using the Data & Software (including downloading,
