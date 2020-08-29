@@ -118,7 +118,8 @@ def load_obj_verts(mesh_path, rand_rotmat, rndrotate=True, scale=1000., n_sample
 
     if rndrotate:
         obj_mesh.rotate_vertices(rand_rotmat)
-
+        verts_obj = obj_mesh.v
+    
     if verts_obj.shape[0] > n_sample_verts:
         verts_sample_id = np.random.choice(verts_obj.shape[0], n_sample_verts, replace=False)
     else:
