@@ -15,12 +15,9 @@
 
 import numpy as np
 import torch
-import torchgeometry as tgm
 import logging
 
 import torch.nn.functional as F
-from copy import copy
-from collections import namedtuple
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -92,25 +89,6 @@ def CRot2rotmat(pose):
 
     return torch.stack([b1, b2, b3], dim=-1)
 
-def rotmat2aa(rotmat):
-    '''
-    :param rotmat: Nx1xnum_jointsx9
-    :return: Nx1xnum_jointsx3
-    '''
-    batch_size = rotmat.size(0)
-    homogen_matrot = F.pad(rotmat.view(-1, 3, 3), [0,1])
-    pose = tgm.rotation_matrix_to_angle_axis(homogen_matrot).view(batch_size, 1, -1, 3).contiguous()
-    return pose
-
-def aa2rotmat(axis_angle):
-    '''
-    :param Nx1xnum_jointsx3
-    :return: pose_matrot: Nx1xnum_jointsx9
-    '''
-    batch_size = axis_angle.size(0)
-    pose_body_matrot = tgm.angle_axis_to_rotation_matrix(axis_angle.reshape(-1, 3))[:, :3, :3].contiguous().view(batch_size, 1, -1, 9)
-    return pose_body_matrot
-
 
 def euler(rots, order='xyz', units='deg'):
 
@@ -162,3 +140,50 @@ def rotmul(rotmat,R):
     R = R.squeeze()
     rot = torch.matmul(torch.from_numpy(R).to(device),torch.from_numpy(rotmat).to(device))
     return rot.cpu().numpy().reshape(shape)
+
+
+# borrowed from https://github.com/zycliao/rotation-utils/blob/master/pytch/conversion.py
+EPS = 1e-8
+
+def aa2rotmat(r):
+    """
+    :param r: Axis-angle, Nx3
+    :return: Rotation matrix, Nx3x3
+    """
+    N = r.size(0)
+    r = r.reshape(-1,3)
+
+    dev = r.device
+    assert r.shape[1] == 3
+    bs = r.shape[0]
+    theta = torch.sqrt(torch.sum(torch.pow(r, 2), 1, keepdim=True))
+    cos_theta = torch.cos(theta).unsqueeze(-1)
+    sin_theta = torch.sin(theta).unsqueeze(-1)
+    eye = torch.unsqueeze(torch.eye(3), 0).repeat(bs, 1, 1).to(dev)
+    norm_r = r / (theta + EPS)
+    r_1 = torch.unsqueeze(norm_r, 2)  # N, 3, 1
+    r_2 = torch.unsqueeze(norm_r, 1)  # N, 1, 3
+    zero_col = torch.zeros(bs, 1).to(dev)
+    skew_sym = torch.cat([zero_col, -norm_r[:, 2:3], norm_r[:, 1:2], norm_r[:, 2:3], zero_col,
+                          -norm_r[:, 0:1], -norm_r[:, 1:2], norm_r[:, 0:1], zero_col], 1)
+    skew_sym = skew_sym.contiguous().view(bs, 3, 3)
+    R = cos_theta*eye + (1-cos_theta)*torch.bmm(r_1, r_2) + sin_theta*skew_sym
+    R = R.reshape(N, 1, -1, 9)
+    return R
+
+
+def rotmat2aa(R):
+    """
+    :param R: Rotation matrix, Nx3x3
+    :return: r: Rotation vector, Nx3
+    """
+
+    N = R.size(0)
+    R = R.view(-1, 3, 3)
+    assert R.shape[1] == R.shape[2] == 3
+    theta = torch.acos(torch.clamp((R[:, 0, 0] + R[:, 1, 1] + R[:, 2, 2] - 1) / 2, min=-1., max=1.)).view(-1, 1)
+    r = torch.stack((R[:, 2, 1]-R[:, 1, 2], R[:, 0, 2]-R[:, 2, 0], R[:, 1, 0]-R[:, 0, 1]), 1) / (2*torch.sin(theta))
+    r_norm = r / torch.sqrt(torch.sum(torch.pow(r, 2), 1, keepdim=True))
+    R_aa = theta * r_norm
+    R_aa = R_aa.view(N, 1, -1, 3).contiguous()
+    return R_aa
