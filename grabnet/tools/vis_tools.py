@@ -51,7 +51,7 @@ def vis_results(dorig, coarse_net, refine_net, rh_model, show_gen=True, show_rec
                 try:
                     from copy import deepcopy
                     meshes = deepcopy(dorig['mesh_object'])
-                    obj_mesh = [meshes[cId]]
+                    obj_mesh = meshes[cId]
                 except:
                     obj_mesh = points_to_spheres(points=to_cpu(dorig['verts_object'][cId]), radius=0.002, vc=name_to_rgb['green'])
 
@@ -62,14 +62,18 @@ def vis_results(dorig, coarse_net, refine_net, rh_model, show_gen=True, show_rec
 
                 if 'rotmat' in dorig:
                     rotmat = dorig['rotmat'][cId].T
-                    obj_mesh = [obj_mesh[0].rotate_vertices(rotmat)]
+                    obj_mesh = obj_mesh.rotate_vertices(rotmat)
                     hand_mesh_orig.rotate_vertices(rotmat)
                     hand_mesh_rec_cnet.rotate_vertices(rotmat)
                     hand_mesh_rec_rnet.rotate_vertices(rotmat)
 
-                mvs[0][cId].set_static_meshes([hand_mesh_orig] + obj_mesh, blocking=True)
-                mvs[1][cId].set_static_meshes([hand_mesh_rec_cnet] + obj_mesh, blocking=True)
-                mvs[2][cId].set_static_meshes([hand_mesh_rec_rnet] + obj_mesh, blocking=True)
+                hand_mesh_rec_cnet.reset_face_normals()
+                hand_mesh_rec_rnet.reset_face_normals()
+                hand_mesh_orig.reset_face_normals()
+
+                mvs[0][cId].set_static_meshes([hand_mesh_orig, obj_mesh], blocking=True)
+                mvs[1][cId].set_static_meshes([hand_mesh_rec_cnet, obj_mesh], blocking=True)
+                mvs[2][cId].set_static_meshes([hand_mesh_rec_rnet, obj_mesh], blocking=True)
 
                 if save:
                     save_path = os.path.join(save_dir, str(cId))
@@ -99,7 +103,7 @@ def vis_results(dorig, coarse_net, refine_net, rh_model, show_gen=True, show_rec
                 try:
                     from copy import deepcopy
                     meshes = deepcopy(dorig['mesh_object'])
-                    obj_mesh = [meshes[cId]]
+                    obj_mesh = meshes[cId]
                 except:
                     obj_mesh = points_to_spheres(to_cpu(dorig['verts_object'][cId]), radius=0.002, vc=name_to_rgb['green'])
 
@@ -108,13 +112,15 @@ def vis_results(dorig, coarse_net, refine_net, rh_model, show_gen=True, show_rec
 
                 if 'rotmat' in dorig:
                     rotmat = dorig['rotmat'][cId].T
-                    obj_mesh = [obj_mesh[0].rotate_vertices(rotmat)]
+                    obj_mesh = obj_mesh.rotate_vertices(rotmat)
                     hand_mesh_gen_cnet.rotate_vertices(rotmat)
                     hand_mesh_gen_rnet.rotate_vertices(rotmat)
 
+                hand_mesh_gen_cnet.reset_face_normals()
+                hand_mesh_gen_rnet.reset_face_normals()
 
-                mvs[0][cId].set_static_meshes([hand_mesh_gen_cnet] + obj_mesh, blocking=True)
-                mvs[1][cId].set_static_meshes([hand_mesh_gen_rnet] + obj_mesh, blocking=True)
+                mvs[0][cId].set_static_meshes([hand_mesh_gen_cnet, obj_mesh], blocking=True)
+                mvs[1][cId].set_static_meshes([hand_mesh_gen_rnet, obj_mesh], blocking=True)
 
                 if save:
                     save_path = os.path.join(save_dir, str(cId))
