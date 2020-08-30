@@ -23,7 +23,6 @@ import mano
 
 from datetime import datetime
 
-from grabnet.tools.cfg_parser import Config
 from grabnet.tools.utils import makepath, makelogger, to_cpu
 from grabnet.tools.train_tools import EarlyStopping
 from grabnet.models.models import CoarseNet, RefineNet
@@ -39,7 +38,7 @@ from tensorboardX import SummaryWriter
 
 class Trainer:
 
-    def __init__(self,cfg, inference=False, evaluate=False):
+    def __init__(self,cfg, inference=False):
 
         
         self.dtype = torch.float32
@@ -546,61 +545,3 @@ class Trainer:
         ext_msg = ' | '.join(['%s = %.2e' % (k, v) for k, v in loss_dict.items() if k != 'loss_total'])
         return '[%s]_TR%02d_E%03d - It %05d - %s - %s: [T:%.2e] - [%s]' % (
             expr_ID, try_num, epoch_num, it,model_name, mode, loss_dict['loss_total'], ext_msg)
-
-
-
-
-def main():
-
-    expr_code = 'V00_release'
-
-    cwd = os.getcwd()
-    default_cfg_path = cwd+'/../configs/grabnet_cfg.yaml'
-
-    base_dir = '/is/ps2/otaheri/grab_net/experiments/GrabNet_release'
-
-    work_dir = os.path.join(base_dir, expr_code)
-
-    processed_data_path = '/ps/scratch/grab/contact_results/omid_46/GrabNet/data'
-
-    cfg = {
-        'n_neurons': 512,
-        'batch_size': 256,
-        'n_workers': 10,
-        'cuda_id': 0,
-
-        'use_multigpu': False,
-        'latentD': 16,
-        'kl_coef': 5e-3,
-
-        'in_features': 4096,
-
-        'rhm_path': '/ps/scratch/grab/body_models/models/mano/MANO_RIGHT.pkl',
-        'vpe_path': cwd + '/../configs/verts_per_edge.npy',
-        'c_weights_path': cwd + '/../configs/rhand_weight.npy',
-
-        'reg_coef': 5e-4,
-        'base_lr': 5e-4,
-
-        'best_cnet': None,
-        'best_rnet': None,
-        'log_every_epoch': 2,
-        'expr_code': expr_code,
-        'work_dir': work_dir,
-        'n_epochs': 500,
-        'dataset_dir': processed_data_path,
-        'load_on_ram':True
-    }
-
-
-    cfg = Config(default_cfg_path=default_cfg_path, **cfg)
-
-    grab_trainer = Trainer(cfg=cfg)
-
-    grab_trainer.fit()
-
-
-if __name__ == '__main__':
-
-    main()
-
