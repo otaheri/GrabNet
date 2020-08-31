@@ -125,7 +125,6 @@ To install the dependencies please follow the next steps:
     ```
     pip install -r requirements.txt
     ```
-- Install the meshviewer from [this repo](https://github.com/MPI-IS/mesh)
 
 
 ## Examples
@@ -137,16 +136,15 @@ After installing the *GrabNet* package, dependencies, and downloading the data a
 - #### Generate several grasps for new unseen objects
     
     ```Shell
-    python grabnet/tests/grabnew_objects.py --obj-path $NEW_OBJECT_PATH \
-                                            --rhm-path $MANO_MODEL_FOLDER \
-                                            --data_path $PATH_TO_GRABNET_DATA
-    ```
+    python grabnet/tests/grab_new_objects.py --obj-path $NEW_OBJECT_PATH \
+                                             --rhm-path $MANO_MODEL_FOLDER
+                                            
 
 - #### Generate grasps for test data and compare to ground truth (GT)
     
     ```Shell
     python grabnet/tests/test.py     --rhm-path $MANO_MODEL_FOLDER \
-                                     --data_path $PATH_TO_GRABNET_DATA
+                                     --data-path $PATH_TO_GRABNET_DATA
     ```
 
 - #### Train GrabNet with new configurations 
@@ -155,15 +153,15 @@ After installing the *GrabNet* package, dependencies, and downloading the data a
     
     ```Shell
     python train.py  --work-dir $SAVING_PATH \
-                    --rhm-path $MANO_MODEL_FOLDER \
-                    --data_path $PATH_TO_GRABNET_DATA
+                     --rhm-path $MANO_MODEL_FOLDER \
+                     --data-path $PATH_TO_GRABNET_DATA
     ```
     
 - #### Get the GrabNet evaluation errors on the dataset 
     
     ```Shell
     python eval.py     --rhm-path $MANO_MODEL_FOLDER \
-                       --data_path $PATH_TO_GRABNET_DATA
+                       --data-path $PATH_TO_GRABNET_DATA
     ```
 
 
