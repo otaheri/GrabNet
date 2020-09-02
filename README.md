@@ -48,9 +48,10 @@ Check out the YouTube videos below for more details.
 
 This implementation:
 
-- Can run GrabNet on the test objects of our dataset (with pre-computed object centering and BPS representation)
-- Can retrain GrabNet, allowing users to change details in the training configuration
-- Can run GrabNet on arbitrary objects provided by users (incl. computing on the fly the BPS representation for them)
+- Can run GrabNet on arbitrary objects provided by users (incl. computing on the fly the BPS representation for them).
+- Provides a quick and easy demo on google colab to generate grasps for any given object.
+- Can run GrabNet on the test objects of our dataset (with pre-computed object centering and BPS representation).
+- Can retrain GrabNet, allowing users to change details in the training configuration.
 
 
 ## Requirements
