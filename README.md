@@ -61,14 +61,14 @@ This package has the following requirements:
 * Python >=3.6.0
 * [pytroch3d >=0.2.0](https://pytorch3d.org/) 
 * [MANO](https://github.com/otaheri/MANO) 
-* [meshviewer](https://github.com/MPI-IS/mesh) (for visualization)
 * [bps_torch](https://github.com/otaheri/bps_torch) 
+* [psbody-mesh](https://github.com/MPI-IS/mesh) (for visualization)
 
 ## Installation
 
 To install the dependencies please follow the next steps:
 
-- Clone this repository and install the requirements: 
+- Clone this repository: 
     ```Shell
     git clone https://github.com/otaheri/GrabNet
     ```
