@@ -209,7 +209,8 @@ We thank:
 * ML, Felipe Mattioni, David Hieber, and Alex Valis for MoCap cleaning. 
 * ML and Tsvetelina Alexiadis for trial coordination, and MH and Felix Grimminger for 3D printing, 
 * ML and Valerie Callaghan for voice recordings, Joachim Tesch for renderings. 
-* Jonathan Williams for the website design, and Benjamin Pellkofer for the IT and web support. 
+* Jonathan Williams for the website design, and Benjamin Pellkofer for the IT and web support.
+* Sergey Prokudin for early access to BPS code.
 * Sai Kumar Dwivedi and Nikos Athanasiou for proofreading.
 
 ## Contact
