@@ -4,6 +4,8 @@
 
 [![report](https://img.shields.io/badge/arxiv-report-red)](https://arxiv.org/abs/2008.11200)
 
+[![Open In Google-Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1c8OfrHhkwtyb0m75QHO0Dpj1IAgDcaqQ)
+
 ![GRAB-Teaser](images/teaser.png)
 [[Paper Page](https://grab.is.tue.mpg.de)] 
 [[Paper](http://grab.is.tue.mpg.de//uploads/ckeditor/attachments/363/grab_eccv2020.pdf) ]
@@ -31,8 +33,9 @@ Check out the YouTube videos below for more details.
 
 ## Table of Contents
   * [Description](#description)
-  * [Getting Started](#getting-started)
+  * [Requirements](#requirements)
   * [Installation](#installation)
+  * [Getting Started](#getting-started)
   * [Examples](#examples)
   * [Citation](#citation)
   * [License](#license)
@@ -45,14 +48,58 @@ Check out the YouTube videos below for more details.
 
 This implementation:
 
-- Can run GrabNet on the test objects of our dataset (with pre-computed object centering and BPS representation)
-- Can retrain GrabNet, allowing users to change details in the training configuration
-- Can run GrabNet on arbitrary objects provided by users (incl. computing on the fly the BPS representation for them)
+- Can run GrabNet on arbitrary objects provided by users (incl. computing on the fly the BPS representation for them).
+- Provides a quick and easy demo on google colab to generate grasps for any given object.
+- Can run GrabNet on the test objects of our dataset (with pre-computed object centering and BPS representation).
+- Can retrain GrabNet, allowing users to change details in the training configuration.
 
+
+## Requirements
+This package has the following requirements:
+
+* [Pytorch>=1.1.0](https://pytorch.org/get-started/locally/) 
+* Python >=3.6.0
+* [pytroch3d >=0.2.0](https://pytorch3d.org/) 
+* [MANO](https://github.com/otaheri/MANO) 
+* [bps_torch](https://github.com/otaheri/bps_torch) 
+* [psbody-mesh](https://github.com/MPI-IS/mesh) (for visualization)
+
+## Installation
+
+To install the dependencies please follow the next steps:
+
+- Clone this repository: 
+    ```Shell
+    git clone https://github.com/otaheri/GrabNet
+    ```
+- Install the dependencies by the following command:
+    ```
+    pip install -r requirements.txt
+    ```
 
 ## Getting started
+
+For a quick demo of GrabNet you can give it a try on [google-colab here](https://colab.research.google.com/drive/1c8OfrHhkwtyb0m75QHO0Dpj1IAgDcaqQ).
+
 Inorder to use the GrabNet model please follow the below steps:
 
+
+#### CoarseNet and RefineNet models
+- Download the GrabNet models from the [GRAB website](https://grab.is.tue.mpg.de), and move the model files to the models folder as described below.
+```bash
+    GrabNet
+        ├── grabnet
+        │    │
+        │    ├── models
+        │    │     └── coarsenet.pt
+        │    │     └── refinenet.pt
+        │    │     │
+```
+
+#### Mano models
+- Download MANO models following the steps on the [MANO repo](https://github.com/otaheri/GrabNet) (skip this part if you already followed this for [GRAB dataset](https://github.com/otaheri/GRAB)).
+
+#### GrabNet data (only required for retraining the model or testing on the test objects)
 - Download the GrabNet dataset (ZIP files) from [this website](http://grab.is.tue.mpg.de). Please do NOT unzip the files yet.
 - Put all the downloaded ZIP files for GrabNet in a folder.
 - Clone this repository and install the requirements: 
@@ -87,44 +134,6 @@ Inorder to use the GrabNet model please follow the below steps:
          ├── object_meshes
          └── subject_meshes
 ```
-
-- Download the GrabNet models from the [GRAB website](https://grab.is.tue.mpg.de), and move the model files to the models folder as described below.
-```bash
-    GrabNet
-        ├── grabnet
-        │    │
-        │    ├── models
-        │    │     └── coarsenet.pt
-        │    │     └── refinenet.pt
-        │    │     │
-```
-
-- Download MANO models from the [MANO website](https://mano.is.tue.mpg.de) (skip this part if you already followed this for [GRAB dataset](https://github.com/otaheri/GRAB)).
-- Follow the installation steps for this repo in the next section.
-
-
-## Requirements
-This package has the following requirements:
-
-* [Pytorch>=1.1.0](https://pytorch.org/get-started/locally/) 
-* Python >=3.6.0
-* [pytroch3d >=0.2.0](https://pytorch3d.org/) 
-* [MANO](https://github.com/otaheri/MANO) 
-* [meshviewer](https://github.com/MPI-IS/mesh) (for visualization)
-* [bps_torch](https://github.com/otaheri/bps_torch) 
-
-## Installation
-
-To install the dependencies please follow the next steps:
-
-- Clone this repository and install the requirements: 
-    ```Shell
-    git clone https://github.com/otaheri/GrabNet
-    ```
-- Install the dependencies by the following command:
-    ```
-    pip install -r requirements.txt
-    ```
 
 
 ## Examples
@@ -200,7 +209,8 @@ We thank:
 * ML, Felipe Mattioni, David Hieber, and Alex Valis for MoCap cleaning. 
 * ML and Tsvetelina Alexiadis for trial coordination, and MH and Felix Grimminger for 3D printing, 
 * ML and Valerie Callaghan for voice recordings, Joachim Tesch for renderings. 
-* Jonathan Williams for the website design, and Benjamin Pellkofer for the IT and web support. 
+* Jonathan Williams for the website design, and Benjamin Pellkofer for the IT and web support.
+* Sergey Prokudin for early access to BPS code.
 * Sai Kumar Dwivedi and Nikos Athanasiou for proofreading.
 
 ## Contact

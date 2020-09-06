@@ -94,10 +94,8 @@ def grab_new_objs(grabnet, objs_path, rot=True, n_samples=10, scale=1.):
     grabnet.refine_net.rhm_train = rh_model
 
     grabnet.logger(f'################# \n'
-                   f'Colors Guide:'
-                   f'                   \n'
-                   f'Pink  --->  CoarseNet generated grasp\n'
-                   f'Gray  --->  RefineNet generated grasp\n')
+                   f'Grabbing the object!'
+                   )
 
     bps = bps_torch(custom_basis=grabnet.bps)
 
@@ -131,7 +129,7 @@ def grab_new_objs(grabnet, objs_path, rot=True, n_samples=10, scale=1.):
         save_dir = os.path.join(grabnet.cfg.work_dir, 'grab_new_objects')
         grabnet.logger(f'#################\n'
                        f'                   \n'
-                       f'Showing results for the {obj_name.upper()}'
+                       f'Saving results for the {obj_name.upper()}'
                        f'                      \n')
 
         gen_meshes = get_meshes(dorig=dorig,
