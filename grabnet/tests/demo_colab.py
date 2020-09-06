@@ -189,7 +189,7 @@ if __name__ == '__main__':
     parser.add_argument('--rhm-path', required=True, type=str,
                         help='The path to the folder containing MANO_RIHGT model')
     
-    parser.add_argument('--scale', default=1, type=int,
+    parser.add_argument('--scale', default=1., type=float,
                         help='The scaling for the 3D object')
         
     parser.add_argument('--n-samples', default=10, type=int,
