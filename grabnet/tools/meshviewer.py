@@ -45,6 +45,8 @@ class Mesh(trimesh.Trimesh):
 
         if filename is not None:
             mesh = trimesh.load(filename, process = process)
+            if isinstance(mesh, trimesh.Scene):
+                mesh = list(mesh.geometry.values())[0]
             vertices = mesh.vertices
             faces= mesh.faces
             visual = mesh.visual
