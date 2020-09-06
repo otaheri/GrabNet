@@ -186,13 +186,22 @@ if __name__ == '__main__':
     parser.add_argument('--obj-path', required=True, type=str,
                         help='The path to the 3D object Mesh or Pointcloud')
 
-    parser.add_argument('--rhm-path', default=None, type=str,
+    parser.add_argument('--rhm-path', required=True, type=str,
                         help='The path to the folder containing MANO_RIHGT model')
+    
+    parser.add_argument('--scale', default=1, type=int,
+                        help='The scaling for the 3D object')
+        
+    parser.add_argument('--n-samples', default=10, type=int,
+                        help='number of grasps to generate')
 
     args = parser.parse_args()
 
     obj_path = args.obj_path
     rhm_path = args.rhm_path
+    scale = args.scale
+    n_samples = args.n_samples
+
 
     cwd = os.getcwd()
     work_dir = cwd + '/logs'
@@ -213,4 +222,4 @@ if __name__ == '__main__':
     cfg = Config(**config)
 
     grabnet = Tester(cfg=cfg)
-    grab_new_objs(grabnet, obj_path, rot=True, n_samples=10)
+    grab_new_objs(grabnet, obj_path, rot=True, n_samples=n_samples, scale=scale)
