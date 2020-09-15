@@ -4,6 +4,7 @@
 
 [![report](https://img.shields.io/badge/arxiv-report-red)](https://arxiv.org/abs/2008.11200)
 
+### Run in Google-Colab
 [![Open In Google-Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1c8OfrHhkwtyb0m75QHO0Dpj1IAgDcaqQ)
 
 ![GRAB-Teaser](images/teaser.png)
