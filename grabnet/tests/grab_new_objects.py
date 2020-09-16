@@ -20,6 +20,7 @@ import argparse
 
 import mano
 from psbody.mesh import MeshViewers, Mesh
+from grabnet.tools.meshviewer import Mesh as M
 from grabnet.tools.vis_tools import points_to_spheres
 from grabnet.tools.utils import euler
 from grabnet.tools.cfg_parser import Config
@@ -175,12 +176,16 @@ def load_obj_verts(mesh_path, rand_rotmat, rndrotate=True, scale=1., n_sample_ve
 
     if rndrotate:
         obj_mesh.rotate_vertices(rand_rotmat)
-        verts_obj = obj_mesh.v
-    
-    if verts_obj.shape[0] > n_sample_verts:
-        verts_sample_id = np.random.choice(verts_obj.shape[0], n_sample_verts, replace=False)
     else:
-        verts_sample_id = np.arange(verts_obj.shape[0])
+        rand_rotmat = np.eye(3)
+
+    while (obj_mesh.v.shape[0] < n_sample_verts):
+        mesh = M(vertices=obj_mesh.v, faces = obj_mesh.f)
+        mesh = mesh.subdivide()
+        obj_mesh = Mesh(v=mesh.vertices, f = mesh.faces, vc=name_to_rgb['green'])
+
+    verts_obj = obj_mesh.v
+    verts_sample_id = np.random.choice(verts_obj.shape[0], n_sample_verts, replace=False)
     verts_sampled = verts_obj[verts_sample_id]
 
     return verts_sampled, obj_mesh, rand_rotmat

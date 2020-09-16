@@ -169,12 +169,14 @@ def load_obj_verts(mesh_path, rand_rotmat, rndrotate=True, scale=1., n_sample_ve
     else:
         rand_rotmat = np.eye(3)
 
-    verts_obj = obj_mesh.vertices
+    while (obj_mesh.vertices.shape[0]<n_sample_verts):
+        new_mesh = obj_mesh.subdivide()
+        obj_mesh = Mesh(vertices=new_mesh.vertices,
+                        faces = new_mesh.faces,
+                        visual = new_mesh.visual)
 
-    if verts_obj.shape[0] > n_sample_verts:
-        verts_sample_id = np.random.choice(verts_obj.shape[0], n_sample_verts, replace=False)
-    else:
-        verts_sample_id = np.arange(verts_obj.shape[0])
+    verts_obj = obj_mesh.vertices
+    verts_sample_id = np.random.choice(verts_obj.shape[0], n_sample_verts, replace=False)
     verts_sampled = verts_obj[verts_sample_id]
 
     return verts_sampled, obj_mesh, rand_rotmat
