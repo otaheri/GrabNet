@@ -8,6 +8,7 @@ tqdm
 Ninja
 trimesh
 pyrender
+PyYAML
 git+git://github.com/otaheri/chamfer_distance.git
 git+git://github.com/otaheri/MANO.git
 git+git://github.com/otaheri/bps_torch.git
