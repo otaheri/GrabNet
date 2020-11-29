@@ -480,14 +480,17 @@ class Trainer:
 
             self.epochs_completed += 1
 
-            if not self.fit_cnet and not self.refine_net:
+            if not self.fit_cnet and not self.fit_rnet:
                 self.logger('Stopping the training!')
+                break
+                
 
         endtime = datetime.now().replace(microsecond=0)
 
         self.logger('Finished Training at %s\n' % (datetime.strftime(endtime, '%Y-%m-%d_%H:%M:%S')))
         self.logger(
-            'Training done in %s! Best CoarseNet val total loss achieved: %.2e\n' % (endtime - starttime, self.best_loss_cnet))
+            'Training done in %s!\n' % (endtime - starttime))
+        self.logger('Best CoarseNet val total loss achieved: %.2e\n' % (self.best_loss_cnet))
         self.logger('Best CoarseNet model path: %s\n' % self.cfg.best_cnet)
 
         self.logger(
