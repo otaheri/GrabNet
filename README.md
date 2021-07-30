@@ -10,7 +10,6 @@
 ![GRAB-Teaser](images/teaser.png)
 [[Paper Page](https://grab.is.tue.mpg.de)] 
 [[Paper](https://arxiv.org/abs/2008.11200) ]
-[[Supp. Mat.](https://www.ecva.net/papers/eccv_2020/papers_ECCV/papers/123490562-supp.pdf)]
 
 [GrabNet](http://grab.is.tue.mpg.de) is a generative model for 3D hand grasps. Given a 3D object mesh, GrabNet 
 can predict several hand grasps for it. GrabNet has two succesive models, CoarseNet (cVAE) and RefineNet.
