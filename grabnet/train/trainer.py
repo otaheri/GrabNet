@@ -79,11 +79,12 @@ class Trainer:
             self.rhm_train = mano.load(model_path=cfg.rhm_path,
                                        model_type='mano',
                                        num_pca_comps=45,
-                                       batch_size=cfg.batch_size // gpu_count,
+                                       batch_size=cfg.batch_size,
                                        flat_hand_mean=True).to(self.device)
             
         self.coarse_net = CoarseNet().to(self.device)
         self.refine_net = RefineNet().to(self.device)
+        self.refine_net.rhm_train = self.rhm_train
 
         self.LossL1 = torch.nn.L1Loss(reduction='mean')
         self.LossL2 = torch.nn.MSELoss(reduction='mean')
