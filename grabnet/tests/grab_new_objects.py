@@ -126,7 +126,7 @@ def grab_new_objs(grabnet, objs_path, rot=True, n_samples=10, scale=1.):
 
             verts_obj, mesh_obj, rotmat = load_obj_verts(new_obj, rand_rotmat[samples], rndrotate=rot, scale=scale)
             
-            bps_object = bps.encode(verts_obj, feature_type='dists')['dists']
+            bps_object = bps.encode(torch.from_numpy(verts_obj), feature_type='dists')['dists']
 
             dorig['bps_object'].append(bps_object.to(grabnet.device))
             dorig['verts_object'].append(torch.from_numpy(verts_obj.astype(np.float32)).unsqueeze(0))
